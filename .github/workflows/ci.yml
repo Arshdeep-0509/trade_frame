@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: typecheck · unit + coverage · parity · e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Pins Playwright's browser download to the version package.json pins.
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit + coverage (thresholds enforced)
+        run: npm run test:cov
+
+      # Parity diffs the TypeScript port against the ORIGINAL Python strategy,
+      # which lives in the backend repo. Set the repository variable
+      # BACKEND_REPO (e.g. "your-name/stock-analyser-backend") to turn it on;
+      # a private backend repo also needs a BACKEND_REPO_TOKEN secret with read access.
+      - name: Check out the backend repo (for parity)
+        if: vars.BACKEND_REPO != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.BACKEND_REPO }}
+          token: ${{ secrets.BACKEND_REPO_TOKEN || github.token }}
+          path: backend-repo
+
+      - uses: actions/setup-python@v5
+        if: vars.BACKEND_REPO != ''
+        with:
+          python-version: '3.12'
+
+      - name: Parity (TypeScript port vs the Python reference, every fixture)
+        if: vars.BACKEND_REPO != ''
+        env:
+          BACKEND_DIR: ${{ github.workspace }}/backend-repo
+          PYTHON: python
+        run: |
+          pip install -r backend-repo/requirements.txt
+          npm run test:parity
+
+      - name: Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end (production build, fixed seed and clock)
+        run: npm run test:e2e
+
+      - name: Upload coverage summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage/coverage-summary.json
+            coverage/index.html
+          if-no-files-found: ignore
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
