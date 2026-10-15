@@ -3,10 +3,10 @@ import { ArrowDown, ArrowUp, Link2, TrendingDown, TrendingUp } from 'lucide-reac
 import { Badge } from '../../components/ui/Badge'
 import { Tooltip } from '../../components/ui/Tooltip'
 import { cn } from '../../lib/cn'
-import { formatINR, formatISTTime, formatNumber } from '../../lib/formatters'
+import { formatINR, formatISTDate, formatISTTime, formatNumber } from '../../lib/formatters'
 import { DEFAULT_PARAMS, type StrategyParams } from '../../strategy/constants'
 import type { SignalKind } from '../../types/domain'
-import type { InstrumentType } from './rowHelpers'
+import { signalLabel, type InstrumentType } from './rowHelpers'
 
 const FLASH_DURATION_MS = 400
 
@@ -46,7 +46,7 @@ export function SignalBadge({ signal, onHoverDerived }: { signal: SignalKind; on
       return (
         <span onMouseEnter={() => onHoverDerived?.(true)} onMouseLeave={() => onHoverDerived?.(false)}>
           <Badge variant="neutral" icon={<Link2 className="h-3 w-3" />}>
-            {signal}
+            {signalLabel(signal)}
           </Badge>
         </span>
       )
@@ -80,8 +80,10 @@ export function ExchangeChip({ exchange }: { exchange: 'NSE' | 'NFO' }) {
 // Time
 // ---------------------------------------------------------------------------
 
-export function TimeCell({ epochSeconds }: { epochSeconds: number }) {
-  return <span className="font-mono tabular-nums text-text-secondary">{formatISTTime(new Date(epochSeconds * 1000))}</span>
+/** `daily`: the row is a daily (1-day interval) bar, which has a date but no meaningful time of day. */
+export function TimeCell({ epochSeconds, daily = false }: { epochSeconds: number; daily?: boolean }) {
+  const date = new Date(epochSeconds * 1000)
+  return <span className="font-mono tabular-nums text-text-secondary">{daily ? formatISTDate(date) : formatISTTime(date)}</span>
 }
 
 // ---------------------------------------------------------------------------

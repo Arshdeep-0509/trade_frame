@@ -2,16 +2,15 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronDown, ChevronRight, Pin } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '../../lib/cn'
-import { formatISTTime } from '../../lib/formatters'
+import { formatISTDate, formatISTTime } from '../../lib/formatters'
+import { isDailyInterval } from '../../strategy/constants'
 import type { ScreenerStore } from '../../store/screenerStore'
-import type { ScreenerRow } from '../../store/types'
 import type { SignalKind } from '../../types/domain'
 import { SIGNAL_DETAIL_ENABLED } from './featureFlags'
 import { RowContextMenu, type ContextMenuState } from './RowContextMenu'
 import { ChangePercentCell, ExchangeChip, HaStreakSparkline, InstrumentTypeChip, LevelCell, LtpCell, PriceCell, RsiCell, SignalBadge } from './cells'
-import { getInstrumentType, isDerivedRow } from './rowHelpers'
-
-type DisplayItem = { type: 'group'; signal: SignalKind; count: number } | { type: 'row'; row: ScreenerRow }
+import { getInstrumentType, isDerivedRow, signalLabel } from './rowHelpers'
+import { containsRowId, pinToggleIds, type DisplayItem, type MergedSignalRow } from './mergeSignalRows'
 
 export interface SignalCardListProps {
   displayItems: DisplayItem[]
@@ -58,9 +57,10 @@ export function SignalCardList({ displayItems, store, selectedRowId, freshRowIds
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const contextMenuRow = contextMenu
-    ? (displayItems.find((i) => i.type === 'row' && i.row.id === contextMenu.rowId) as Extract<DisplayItem, { type: 'row' }> | undefined)?.row
+  const contextMenuMerged = contextMenu
+    ? (displayItems.find((i) => i.type === 'row' && containsRowId(i.merged, contextMenu.rowId)) as Extract<DisplayItem, { type: 'row' }> | undefined)?.merged
     : undefined
+  const contextMenuRow = contextMenuMerged?.row
 
   return (
     <div ref={parentRef} className="h-full overflow-y-auto px-2" role="list" aria-label="Signals">
@@ -79,7 +79,7 @@ export function SignalCardList({ displayItems, store, selectedRowId, freshRowIds
                 style={{ transform: `translateY(${virtualRow.start}px)`, height: virtualRow.size }}
               >
                 {collapsedGroups.has(item.signal) ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                {item.signal}
+                {signalLabel(item.signal)}
                 <span className="text-text-muted">({item.count})</span>
               </button>
             )
@@ -88,10 +88,10 @@ export function SignalCardList({ displayItems, store, selectedRowId, freshRowIds
           return (
             <SignalCard
               key={item.row.id}
-              row={item.row}
+              merged={item.merged}
               store={store}
-              isSelected={item.row.id === selectedRowId}
-              isFresh={freshRowIds.has(item.row.id)}
+              isSelected={containsRowId(item.merged, selectedRowId)}
+              isFresh={item.merged.members.some((r) => freshRowIds.has(r.id))}
               style={{ transform: `translateY(${virtualRow.start}px)`, height: virtualRow.size }}
               onOpen={() => {
                 store.getState().selectRow(item.row.id)
@@ -105,10 +105,10 @@ export function SignalCardList({ displayItems, store, selectedRowId, freshRowIds
         })}
       </div>
 
-      {contextMenu && contextMenuRow && (
+      {contextMenu && contextMenuMerged && contextMenuRow && (
         <RowContextMenu
           state={contextMenu}
-          pinned={contextMenuRow.pinned}
+          pinned={contextMenuMerged.pinned}
           onClose={() => setContextMenuState(null)}
           onCopySymbol={() => {
             void navigator.clipboard.writeText(contextMenuRow.symbol)
@@ -119,7 +119,7 @@ export function SignalCardList({ displayItems, store, selectedRowId, freshRowIds
             setContextMenuState(null)
           }}
           onTogglePin={() => {
-            store.getState().togglePin(contextMenuRow.id)
+            for (const id of pinToggleIds(contextMenuMerged)) store.getState().togglePin(id)
             setContextMenuState(null)
           }}
           onOpenChart={
@@ -144,7 +144,7 @@ function clampMenuPosition(x: number, y: number, rowId: string): ContextMenuStat
 }
 
 interface SignalCardProps {
-  row: ScreenerRow
+  merged: MergedSignalRow
   store: ScreenerStore
   isSelected: boolean
   isFresh: boolean
@@ -153,7 +153,8 @@ interface SignalCardProps {
   onLongPress: (x: number, y: number) => void
 }
 
-function SignalCard({ row, store, isSelected, isFresh, style, onOpen, onLongPress }: SignalCardProps) {
+function SignalCard({ merged, store, isSelected, isFresh, style, onOpen, onLongPress }: SignalCardProps) {
+  const { row, pinned } = merged
   const ltp = store((s) => (row.token ? s.liveLtp.get(row.token) : undefined))
   const params = store((s) => s.params)
   const instrumentType = getInstrumentType(row)
@@ -218,11 +219,12 @@ function SignalCard({ row, store, isSelected, isFresh, style, onOpen, onLongPres
           isFresh && 'row-enter',
         )}
       >
-        {/* Line 1: symbol (truncated) + signal badge. */}
+        {/* Line 1: symbol (truncated) + signal and breakout badges (whichever this instrument has). */}
         <div className="flex items-center justify-between gap-2">
           <span className="min-w-0 truncate text-sm font-medium text-text-primary">{row.symbol}</span>
-          <span className="shrink-0">
-            <SignalBadge signal={row.signal} />
+          <span className="flex shrink-0 items-center gap-1">
+            {merged.signal && <SignalBadge signal={merged.signal} />}
+            {merged.breakout && <SignalBadge signal={merged.breakout} />}
           </span>
         </div>
 
@@ -236,13 +238,13 @@ function SignalCard({ row, store, isSelected, isFresh, style, onOpen, onLongPres
         {/* Line 3: time, exchange chip, instrument chip, RSI, HA sparkline, breakout level. */}
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <span className="shrink-0 font-mono tabular-nums text-text-muted">{formatISTTime(new Date(row.time * 1000))}</span>
+            <span className="shrink-0 font-mono tabular-nums text-text-muted">{isDailyInterval(params.candleInterval) ? formatISTDate(new Date(row.time * 1000)) : formatISTTime(new Date(row.time * 1000))}</span>
             <ExchangeChip exchange={row.exchange} />
             <InstrumentTypeChip type={instrumentType} />
-            {row.pinned && <Pin className="h-3 w-3 shrink-0 text-warning" aria-label="Pinned" />}
+            {pinned && <Pin className="h-3 w-3 shrink-0 text-warning" aria-label="Pinned" />}
             <RsiCell rsi={row.rsi} inherited={derived ? row.derivedFrom : undefined} bands={params} />
             <HaStreakSparkline colors={row.haStreak} />
-            {row.level !== undefined && <LevelCell level={row.level} />}
+            {merged.members.map((r) => r.level !== undefined && <LevelCell key={r.id} level={r.level} />)}
           </span>
           <span
             role="button"
@@ -250,16 +252,16 @@ function SignalCard({ row, store, isSelected, isFresh, style, onOpen, onLongPres
             aria-label="Pin"
             onClick={(e) => {
               e.stopPropagation()
-              store.getState().togglePin(row.id)
+              for (const id of pinToggleIds(merged)) store.getState().togglePin(id)
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault()
                 e.stopPropagation()
-                store.getState().togglePin(row.id)
+                for (const id of pinToggleIds(merged)) store.getState().togglePin(id)
               }
             }}
-            className={cn('shrink-0 text-text-muted hover:text-text-primary', row.pinned && 'text-warning')}
+            className={cn('shrink-0 text-text-muted hover:text-text-primary', pinned && 'text-warning')}
           >
             <Pin className="h-3.5 w-3.5" />
           </span>

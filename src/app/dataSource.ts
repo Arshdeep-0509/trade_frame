@@ -1,33 +1,21 @@
-import { DEFAULT_FAILURE_RATE, DEFAULT_SEED, MockMarketDataSource } from '../data/mock'
+import { HttpMarketDataSource } from '../data/http/HttpMarketDataSource'
 
 /**
- * TEST HOOK: `VITE_SEED` (build-time env) pins the mock market's seed, so an
- * end-to-end run against a production build is reproducible. Unset, blank or
- * non-integer -> DEFAULT_SEED, exactly as before.
+ * The /rsi-ha screener's data source: real Master Trust data via the backend
+ * repo's mastertrust_intraday_api.py — the same REST calls
+ * mastertrust_rsi_ha_screener.py makes (/api/v1/charts/tdv candles, the
+ * CompactScrip.csv scrip master, /api/v1/search). No mock data reaches this page.
+ *
+ * The scrip master is requested in exactly the three slices the screener's
+ * loaders read: load_nse_equity_universe() (NSE/EQ),
+ * load_fno_futures_universe() (NFO/FUTSTK), and load_fno_atm_options()
+ * (NSE/EQ + NFO/OPTSTK).
  */
-export function seedFromEnv(raw: string | undefined): number {
-  if (raw === undefined || raw.trim() === '') return DEFAULT_SEED
-  const parsed = Number(raw)
-  return Number.isSafeInteger(parsed) ? parsed : DEFAULT_SEED
-}
-
-/**
- * TEST HOOK: `VITE_MOCK_FAILURE_RATE` (build-time env, 0..1) sets the share of
- * mock requests that fail. The end-to-end build pins it to 0 so two scans of
- * the same market return the same rows. Unset or invalid -> the standing 2%.
- */
-export function failureRateFromEnv(raw: string | undefined): number {
-  if (raw === undefined || raw.trim() === '') return DEFAULT_FAILURE_RATE
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : DEFAULT_FAILURE_RATE
-}
-
-/**
- * The single place the app decides which MarketDataSource implementation is
- * active. To point at a real backend later, this is the one line that
- * changes — swap `new MockMarketDataSource()` for a real implementation of
- * the same interface. Nothing else in the app should construct a data
- * source directly.
- */
-export const dataSource = new MockMarketDataSource(seedFromEnv(import.meta.env.VITE_SEED))
-dataSource.setFailureRate(failureRateFromEnv(import.meta.env.VITE_MOCK_FAILURE_RATE))
+export const dataSource = new HttpMarketDataSource({
+  baseUrl: import.meta.env.VITE_INTRADAY_API_BASE ?? '',
+  scripMasterQueries: [
+    { exchange: 'NSE', instrumentName: 'EQ' },
+    { exchange: 'NFO', instrumentName: 'FUTSTK' },
+    { exchange: 'NFO', instrumentName: 'OPTSTK' },
+  ],
+})

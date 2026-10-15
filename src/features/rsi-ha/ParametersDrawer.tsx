@@ -9,7 +9,7 @@ import { Select } from '../../components/ui/Select'
 import { cn } from '../../lib/cn'
 import { useEscapeToClose } from '../../lib/useEscapeToClose'
 import type { ScreenerStore } from '../../store/screenerStore'
-import { overriddenParamKeys, parseIntervalMinutes, type StrategyParams } from '../../strategy/constants'
+import { CANDLE_INTERVAL_OPTIONS, overriddenParamKeys, type StrategyParams } from '../../strategy/constants'
 
 export interface ParametersDrawerProps {
   open: boolean
@@ -18,7 +18,6 @@ export interface ParametersDrawerProps {
 }
 
 const DEBOUNCE_MS = 400
-const INTERVAL_OPTIONS = [1, 3, 5, 15, 30, 60] as const
 
 /**
  * A labelled setting. Single-control fields render a real <label> around the
@@ -158,14 +157,10 @@ export function ParametersDrawer({ open, onClose, store }: ParametersDrawerProps
           </Field>
 
           <Field label="Candle interval" overridden={overridden.has('candleInterval')}>
-            <Select
-              value={parseIntervalMinutes(draft.candleInterval)}
-              onChange={(e) => setDraft({ ...draft, candleInterval: `${e.target.value}minute` })}
-              className="w-full"
-            >
-              {INTERVAL_OPTIONS.map((minutes) => (
-                <option key={minutes} value={minutes} disabled={minutes < 5}>
-                  {minutes} min{minutes < 5 ? ' (unavailable — mock base data is 5-minute)' : ''}
+            <Select value={draft.candleInterval} onChange={(e) => setDraft({ ...draft, candleInterval: e.target.value })} className="w-full">
+              {CANDLE_INTERVAL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </Select>

@@ -4,14 +4,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ScreenerStore } from '../../../store/screenerStore'
 import { makeRow, renderWithRouter, seededStore } from '../../../test-utils/fixtures'
 import { FilterBar } from '../FilterBar'
-import { SIGNAL_KINDS } from '../rowHelpers'
+import { SIGNAL_KINDS, signalLabel } from '../rowHelpers'
 import { useTableFilters } from '../useTableFilters'
 
 /** FilterBar as the table wires it: the URL-backed filter hook + the store's equity toggle. */
 function Harness({ store }: { store: ScreenerStore }) {
   const filters = useTableFilters()
   const show = store((s) => s.showNseEquityRows)
-  return <FilterBar filters={filters} showNseEquityRows={show} onShowNseEquityRowsChange={(v) => store.getState().setShowNseEquityRows(v)} />
+  return (
+    <FilterBar
+      filters={filters}
+      showNseEquityRows={show}
+      onShowNseEquityRowsChange={(v) => store.getState().setShowNseEquityRows(v)}
+      showBreakoutOnlyRows={false}
+      onShowBreakoutOnlyRowsChange={() => {}}
+    />
+  )
 }
 
 const urlQuery = (): string => screen.getByTestId('location-search').textContent ?? ''
@@ -41,7 +49,7 @@ describe('FilterBar', () => {
     const group = screen.getByRole('group', { name: 'Filter by signal' })
 
     for (const signal of SIGNAL_KINDS) {
-      const chip = Array.from(group.querySelectorAll('button')).find((b) => b.textContent === signal)
+      const chip = Array.from(group.querySelectorAll('button')).find((b) => b.textContent === signalLabel(signal))
       if (!chip) throw new Error(`no chip for ${signal}`)
       expect(chip).toHaveAttribute('aria-pressed', 'false')
       await user.click(chip)
@@ -56,15 +64,15 @@ describe('FilterBar', () => {
   it('a signal with a space is encoded ONCE in the URL (CE+Buy, not CE%2520Buy)', async () => {
     const user = userEvent.setup()
     renderWithRouter(<Harness store={seededStore([])} />)
-    await user.click(screen.getByRole('button', { name: 'CE Buy' }))
+    await user.click(screen.getByRole('button', { name: 'Call Buy' }))
     expect(urlQuery()).toContain('sig=CE+Buy')
     expect(urlQuery()).not.toContain('%25')
   })
 
   it('an old double-encoded link (sig=CE%2520Buy) still restores the filter', () => {
     renderWithRouter(<Harness store={seededStore([])} />, ['/rsi-ha?sig=CE%2520Buy,PE+Buy'])
-    expect(screen.getByRole('button', { name: 'CE Buy' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'PE Buy' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Call Buy' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Put Buy' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('"Clear" resets every filter and empties the URL', async () => {

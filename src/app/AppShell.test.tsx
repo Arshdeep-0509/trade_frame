@@ -47,17 +47,18 @@ describe('AppShell', () => {
   it('renders page content for the active route', () => {
     renderAppShell('/rsi-ha')
 
-    // The real SignalsTable is live here (backed by the real mock data
-    // source) — its filter bar renders immediately regardless of scan
+    // The real SignalsTable is live here (backed by the real Master Trust
+    // data source) — its filter bar renders immediately regardless of scan
     // state, so it's a stable thing to assert on without waiting on an
     // async scan to resolve.
     expect(screen.getByLabelText('Search symbol')).toBeInTheDocument()
   })
 
-  it('shows the prototype disclaimer', () => {
+  it('labels the screener as real Master Trust data, never simulated', () => {
     renderAppShell('/rsi-ha')
 
-    expect(screen.getByText(/PROTOTYPE — SIMULATED DATA/)).toBeInTheDocument()
-    expect(screen.getByText(/Mock market data generated locally/)).toBeInTheDocument()
+    expect(screen.getByText('MASTER TRUST DATA')).toBeInTheDocument()
+    expect(screen.getByText(/Market data from Master Trust/)).toBeInTheDocument()
+    expect(screen.queryByText(/SIMULATED|Mock market data/i)).not.toBeInTheDocument()
   })
 })

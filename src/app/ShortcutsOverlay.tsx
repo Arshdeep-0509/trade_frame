@@ -24,7 +24,6 @@ const GROUPS: readonly ShortcutGroup[] = [
     items: [
       ['p', 'Pause / resume scanning'],
       ['r', 'Rescan now'],
-      ['1 – 4', 'Replay speed: 1x / 10x / 60x / 300x'],
     ],
   },
   {

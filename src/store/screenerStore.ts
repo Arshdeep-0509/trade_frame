@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 import type { ConnectionState, MarketDataSource } from '../data/MarketDataSource'
 import type { ScannedRow } from '../features/rsi-ha/scanner'
 import { scanWatchlist } from '../features/rsi-ha/scanner'
+import { fetchIntervalCandles } from '../features/rsi-ha/intervalCandles'
 import { runScanInWorker } from '../features/rsi-ha/scannerClient'
 import { DEFAULT_PARAMS, parseIntervalMinutes, type StrategyParams } from '../strategy/constants'
 import { selectVisibleRows } from '../strategy/signals'
@@ -402,10 +403,9 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
         const cached = get().candleCache.get(token)
         if (cached) return cached
 
-        // Always the mock's native 5-minute base series — see scanner.ts's
-        // and MockMarketDataSource's comments. Callers that want a coarser
-        // interval resample it themselves via src/strategy/resampleCandles.
-        const candles = await deps.dataSource.fetchHistoricalCandles(token, exchange, '5minute', 5)
+        // The same series the scanner evaluated, at the current candleInterval.
+        // A candleInterval change triggers a rescan, which clears this cache.
+        const candles = await fetchIntervalCandles(deps.dataSource, token, exchange, get().params.candleInterval)
         set((draft) => {
           draft.candleCache.set(token, candles)
         })

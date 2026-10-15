@@ -7,11 +7,10 @@ import { cn } from '../../lib/cn'
 import { formatISTTime } from '../../lib/formatters'
 import { useMediaQuery } from '../../lib/useMediaQuery'
 import type { ScreenerStore } from '../../store/screenerStore'
-import type { ScreenerRow } from '../../store/types'
-import type { StrategyParams } from '../../strategy/constants'
+import { isDailyInterval, type StrategyParams } from '../../strategy/constants'
 import type { SignalKind } from '../../types/domain'
 import { playChime } from './chime'
-import { ChangePercentCell, ExchangeChip, HaStreakSparkline, InstrumentTypeChip, LevelCell, LtpCell, PriceCell, RsiCell, SignalBadge, TimeCell } from './cells'
+import { ChangePercentCell, ExchangeChip, InstrumentTypeChip, LtpCell, PriceCell, RsiCell, SignalBadge, TimeCell } from './cells'
 import { SignalCardList } from './SignalCardList'
 import { SignalDetail } from './SignalDetail'
 import { SIGNAL_DETAIL_ENABLED } from './featureFlags'
@@ -22,7 +21,8 @@ import { RowContextMenu, type ContextMenuState } from './RowContextMenu'
 import { applyFilters, useTableFilters } from './useTableFilters'
 import { compareRows, useSort, type SortableColumn } from './useSort'
 import { UniverseSelector } from './UniverseSelector'
-import { getInstrumentType, isDerivedRow } from './rowHelpers'
+import { getInstrumentType, isDerivedRow, signalLabel } from './rowHelpers'
+import { containsRowId, groupKindOf, mergeSignalRows, pinToggleIds, type DisplayItem, type MergedSignalRow } from './mergeSignalRows'
 
 export interface SignalsTableProps {
   store: ScreenerStore
@@ -30,12 +30,12 @@ export interface SignalsTableProps {
 
 const ROW_HEIGHT = 32
 const GROUP_HEADER_HEIGHT = 28
-const GRID_TEMPLATE = '84px 180px 52px 140px 96px 96px 84px 118px 64px 96px 96px'
-// Sum of GRID_TEMPLATE's columns — the eleven-column grid's natural width.
+const GRID_TEMPLATE = '84px 180px 52px 110px 140px 96px 96px 84px 124px 96px'
+// Sum of GRID_TEMPLATE's columns — the ten-column grid's natural width.
 // Below this, the grid gets its own horizontal scroller rather than
 // squeezing columns (a fixed min-width wider than 320px is only allowed
 // inside a scroller, which this is).
-const GRID_MIN_WIDTH = 1106
+const GRID_MIN_WIDTH = 1082
 const SEARCH_INPUT_ID = 'symbol-search'
 
 interface ColumnMeta {
@@ -43,6 +43,7 @@ interface ColumnMeta {
   label: string
   sortable: boolean
   align?: 'right'
+  className?: string
 }
 
 const COLUMN_META: ColumnMeta[] = [
@@ -50,16 +51,14 @@ const COLUMN_META: ColumnMeta[] = [
   { key: 'symbol', label: 'Symbol', sortable: true },
   { key: 'instrumentType', label: 'Type', sortable: true },
   { key: 'signal', label: 'Signal', sortable: true },
+  { key: 'breakout', label: 'Breakout', sortable: true },
   { key: 'price', label: 'Price', sortable: true, align: 'right' },
   { key: 'ltp', label: 'LTP', sortable: true, align: 'right' },
   { key: 'changePercent', label: 'Chg %', sortable: true, align: 'right' },
-  { key: 'rsi', label: 'RSI', sortable: true },
-  { key: 'haStreak', label: 'HA', sortable: false },
-  { key: 'level', label: 'Level', sortable: true, align: 'right' },
+  // pl-4: keeps Chg %'s right-aligned "—"/"-1.2%" from butting into the RSI value and reading as a minus sign.
+  { key: 'rsi', label: 'RSI', sortable: true, className: 'pl-4' },
   { key: 'actions', label: '', sortable: false },
 ]
-
-type DisplayItem = { type: 'group'; signal: SignalKind; count: number } | { type: 'row'; row: ScreenerRow }
 
 function ariaSortFor(direction: 'asc' | 'desc' | null): 'ascending' | 'descending' | 'none' {
   if (direction === 'asc') return 'ascending'
@@ -93,6 +92,8 @@ export function SignalsTable({ store }: SignalsTableProps) {
   const sort = useSort([{ key: 'time', direction: 'desc' }])
 
   const [groupBy, setGroupBy] = useState(false)
+  // Off by default: the breakout rule doesn't look at RSI or Heikin-Ashi, so a breakout-only row isn't a pick of the RSI + HA strategy.
+  const [showBreakoutOnlyRows, setShowBreakoutOnlyRows] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<SignalKind>>(new Set())
   const [chimeEnabled, setChimeEnabled] = useState(false)
   const [detailRowId, setDetailRowIdRaw] = useState<string | null>(null)
@@ -105,7 +106,7 @@ export function SignalsTable({ store }: SignalsTableProps) {
   const [announcement, setAnnouncement] = useState('')
 
   // The one threshold in the app that isn't a named breakpoint — an
-  // eleven-column grid genuinely doesn't fit before ~900px, which sits
+  // ten-column grid genuinely doesn't fit before ~900px, which sits
   // between md (768) and lg (1024). See useMediaQuery's own comment.
   const isDesktop = useMediaQuery('(min-width: 900px)')
   const parentRef = useRef<HTMLDivElement>(null)
@@ -159,55 +160,72 @@ export function SignalsTable({ store }: SignalsTableProps) {
   // refreshed only when `rows` or `sort.rules` change, not on every tick —
   // both are listed in the deps below even though the closure reads
   // `store.getState()` rather than either directly.
-  const columns: Record<string, SortableColumn<ScreenerRow>> = useMemo(() => {
+  const columns: Record<string, SortableColumn<MergedSignalRow>> = useMemo(() => {
     const ltpSnapshot = store.getState().liveLtp
     return {
-      time: { key: 'time', sortValue: (r) => r.time },
-      symbol: { key: 'symbol', sortValue: (r) => r.symbol },
-      instrumentType: { key: 'instrumentType', sortValue: (r) => getInstrumentType(r) },
-      signal: { key: 'signal', sortValue: (r) => r.signal },
-      price: { key: 'price', sortValue: (r) => r.price },
-      ltp: { key: 'ltp', sortValue: (r) => (r.token ? (ltpSnapshot.get(r.token) ?? NaN) : NaN) },
+      time: { key: 'time', sortValue: (m) => m.row.time },
+      symbol: { key: 'symbol', sortValue: (m) => m.row.symbol },
+      instrumentType: { key: 'instrumentType', sortValue: (m) => getInstrumentType(m.row) },
+      // A missing signal/breakout ("—") is NaN, so it sorts last in either direction.
+      signal: { key: 'signal', sortValue: (m) => (m.signal ? signalLabel(m.signal) : NaN) },
+      breakout: { key: 'breakout', sortValue: (m) => m.breakout ?? NaN },
+      price: { key: 'price', sortValue: (m) => m.row.price },
+      ltp: { key: 'ltp', sortValue: (m) => (m.row.token ? (ltpSnapshot.get(m.row.token) ?? NaN) : NaN) },
       changePercent: {
         key: 'changePercent',
-        sortValue: (r) => {
-          const ltp = r.token ? ltpSnapshot.get(r.token) : undefined
-          return ltp === undefined || r.price === 0 ? NaN : ((ltp - r.price) / r.price) * 100
+        sortValue: (m) => {
+          const ltp = m.row.token ? ltpSnapshot.get(m.row.token) : undefined
+          return ltp === undefined || m.row.price === 0 ? NaN : ((ltp - m.row.price) / m.row.price) * 100
         },
       },
-      rsi: { key: 'rsi', sortValue: (r) => r.rsi },
-      level: { key: 'level', sortValue: (r) => r.level ?? NaN },
-    } satisfies Record<string, SortableColumn<ScreenerRow>>
+      rsi: { key: 'rsi', sortValue: (m) => m.row.rsi },
+    } satisfies Record<string, SortableColumn<MergedSignalRow>>
     // rows/sort.rules deliberately re-trigger the snapshot; store is stable.
   }, [rows, sort.rules, store])
 
-  const filteredSorted = useMemo(() => {
-    const filtered = applyFilters(rows, filters.filters, getInstrumentType)
-    return filtered.sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
-      return compareRows(a, b, sort.rules, columns)
-    })
-  }, [rows, filters.filters, sort.rules, columns])
+  // Filters run on the per-signal rows (a "BUY" chip matches the BUY row); every row sharing a
+  // matched instrument + candle is then merged back in, so its Breakout cell still shows alongside.
+  const filteredSignals = useMemo(() => applyFilters(rows, filters.filters, getInstrumentType), [rows, filters.filters])
+  const matchedRows = useMemo(() => {
+    const matched = new Set(filteredSignals.map((r) => r.id))
+    return mergeSignalRows(rows).filter((m) => m.members.some((r) => matched.has(r.id)))
+  }, [rows, filteredSignals])
+  const hiddenBreakoutOnlyCount = showBreakoutOnlyRows ? 0 : matchedRows.filter((m) => m.signal === null).length
+  const mergedRows = useMemo(
+    () =>
+      matchedRows
+        .filter((m) => showBreakoutOnlyRows || m.signal !== null)
+        .sort((a, b) => {
+          if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+          return compareRows(a, b, sort.rules, columns)
+        }),
+    [matchedRows, showBreakoutOnlyRows, sort.rules, columns],
+  )
+  // One store row per signal, for the CSV/Markdown export.
+  const filteredSorted = useMemo(() => mergedRows.flatMap((m) => m.members), [mergedRows])
+  // One row per table row, for the detail drawer's prev/next.
+  const primaryRows = useMemo(() => mergedRows.map((m) => m.row), [mergedRows])
 
   const displayItems: DisplayItem[] = useMemo(() => {
-    if (!groupBy) return filteredSorted.map((row): DisplayItem => ({ type: 'row', row }))
+    if (!groupBy) return mergedRows.map((merged): DisplayItem => ({ type: 'row', row: merged.row, merged }))
 
-    const groups = new Map<SignalKind, ScreenerRow[]>()
-    for (const row of filteredSorted) {
-      const list = groups.get(row.signal) ?? []
-      list.push(row)
-      groups.set(row.signal, list)
+    const groups = new Map<SignalKind, MergedSignalRow[]>()
+    for (const merged of mergedRows) {
+      const kind = groupKindOf(merged)
+      const list = groups.get(kind) ?? []
+      list.push(merged)
+      groups.set(kind, list)
     }
 
     const items: DisplayItem[] = []
     for (const [signal, groupRows] of groups) {
       items.push({ type: 'group', signal, count: groupRows.length })
       if (!collapsedGroups.has(signal)) {
-        for (const row of groupRows) items.push({ type: 'row', row })
+        for (const merged of groupRows) items.push({ type: 'row', row: merged.row, merged })
       }
     }
     return items
-  }, [filteredSorted, groupBy, collapsedGroups])
+  }, [mergedRows, groupBy, collapsedGroups])
 
   const virtualizer = useVirtualizer({
     count: displayItems.length,
@@ -246,7 +264,7 @@ export function SignalsTable({ store }: SignalsTableProps) {
       const visibleRowItems = displayItems.filter((i): i is Extract<DisplayItem, { type: 'row' }> => i.type === 'row')
       if (event.key === 'j' || event.key === 'k') {
         event.preventDefault()
-        const currentIndex = visibleRowItems.findIndex((i) => i.row.id === selectedRowId)
+        const currentIndex = visibleRowItems.findIndex((i) => containsRowId(i.merged, selectedRowId))
         const delta = event.key === 'j' ? 1 : -1
         const nextIndex = Math.max(0, Math.min(visibleRowItems.length - 1, currentIndex + delta))
         const next = visibleRowItems[nextIndex]
@@ -262,7 +280,8 @@ export function SignalsTable({ store }: SignalsTableProps) {
   }, [displayItems, selectedRowId, store])
 
   const detailRow = rows.find((r) => r.id === detailRowId) ?? null
-  const contextMenuRow = rows.find((r) => r.id === contextMenu?.rowId) ?? null
+  const contextMenuMerged = contextMenu ? (mergedRows.find((m) => containsRowId(m, contextMenu.rowId)) ?? null) : null
+  const contextMenuRow = contextMenuMerged?.row ?? null
 
   const secondsToNextScan = nextScanAt !== null ? Math.max(0, nextScanAt - now) : null
 
@@ -276,7 +295,13 @@ export function SignalsTable({ store }: SignalsTableProps) {
       <UniverseSelector store={store} />
       <ParamsOverrideBanner store={store} />
 
-      <FilterBar filters={filters} showNseEquityRows={showNseEquityRows} onShowNseEquityRowsChange={(v) => store.getState().setShowNseEquityRows(v)} />
+      <FilterBar
+        filters={filters}
+        showNseEquityRows={showNseEquityRows}
+        onShowNseEquityRowsChange={(v) => store.getState().setShowNseEquityRows(v)}
+        showBreakoutOnlyRows={showBreakoutOnlyRows}
+        onShowBreakoutOnlyRowsChange={setShowBreakoutOnlyRows}
+      />
 
       {/* Column headers can't carry a sort affordance once the table becomes a card list — this chip strip replaces them below `isDesktop`. */}
       {!isDesktop && (
@@ -324,6 +349,7 @@ export function SignalsTable({ store }: SignalsTableProps) {
         </Button>
         <span className="ml-auto text-xs text-text-secondary">
           {filteredSorted.length} of {rows.length} signals
+          {hiddenBreakoutOnlyCount > 0 && <span className="ml-2">· {hiddenBreakoutOnlyCount} breakout-only hidden</span>}
           {isPaused ? (
             <span className="ml-2 font-medium text-warning">· scanning paused</span>
           ) : (
@@ -343,10 +369,10 @@ export function SignalsTable({ store }: SignalsTableProps) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1" role={isDesktop ? 'grid' : undefined} aria-label={isDesktop ? 'Signals' : undefined} aria-rowcount={isDesktop ? filteredSorted.length : undefined}>
+      <div className="min-h-0 flex-1" role={isDesktop ? 'grid' : undefined} aria-label={isDesktop ? 'Signals' : undefined} aria-rowcount={isDesktop ? mergedRows.length : undefined}>
         {scanState === 'loading-universe' && rows.length === 0 ? (
           <SkeletonTable />
-        ) : filteredSorted.length === 0 ? (
+        ) : mergedRows.length === 0 ? (
           <ZeroSignalsEmptyState
             universeSize={universe.length}
             params={params}
@@ -396,6 +422,7 @@ export function SignalsTable({ store }: SignalsTableProps) {
                       'flex h-8 items-center gap-1 py-1.5 text-left disabled:cursor-default',
                       col.sortable && 'cursor-pointer hover:text-text-primary',
                       col.align === 'right' && 'justify-end text-right',
+                      col.className,
                     )}
                   >
                     {col.label}
@@ -432,11 +459,11 @@ export function SignalsTable({ store }: SignalsTableProps) {
                   return (
                     <SignalTableRowView
                       key={item.row.id}
-                      row={item.row}
+                      merged={item.merged}
                       store={store}
                       virtualRow={virtualRow}
-                      isSelected={item.row.id === selectedRowId}
-                      isFresh={freshRowIds.current.has(item.row.id)}
+                      isSelected={containsRowId(item.merged, selectedRowId)}
+                      isFresh={item.merged.members.some((r) => freshRowIds.current.has(r.id))}
                       isHoveredUnderlying={hoveredUnderlying === item.row.symbol}
                       onClick={() => {
                         store.getState().selectRow(item.row.id)
@@ -456,7 +483,7 @@ export function SignalsTable({ store }: SignalsTableProps) {
       {SIGNAL_DETAIL_ENABLED && (
         <SignalDetail
           row={detailRow}
-          rowList={filteredSorted}
+          rowList={primaryRows}
           store={store}
           onClose={() => setDetailRowId(null)}
           onNavigate={(next) => {
@@ -469,7 +496,7 @@ export function SignalsTable({ store }: SignalsTableProps) {
       {contextMenu && contextMenuRow && (
         <RowContextMenu
           state={contextMenu}
-          pinned={contextMenuRow.pinned}
+          pinned={contextMenuMerged?.pinned ?? contextMenuRow.pinned}
           onClose={() => setContextMenu(null)}
           onCopySymbol={() => {
             void navigator.clipboard.writeText(contextMenuRow.symbol)
@@ -480,7 +507,7 @@ export function SignalsTable({ store }: SignalsTableProps) {
             setContextMenu(null)
           }}
           onTogglePin={() => {
-            store.getState().togglePin(contextMenuRow.id)
+            if (contextMenuMerged) for (const id of pinToggleIds(contextMenuMerged)) store.getState().togglePin(id)
             setContextMenu(null)
           }}
           onOpenChart={SIGNAL_DETAIL_ENABLED ? () => setContextMenu(null) : undefined}
@@ -495,7 +522,7 @@ export function SignalsTable({ store }: SignalsTableProps) {
 // ---------------------------------------------------------------------------
 
 interface SignalTableRowViewProps {
-  row: ScreenerRow
+  merged: MergedSignalRow
   store: ScreenerStore
   virtualRow: { index: number; start: number; size: number }
   isSelected: boolean
@@ -506,7 +533,8 @@ interface SignalTableRowViewProps {
   onHoverDerived: (hovering: boolean) => void
 }
 
-function SignalTableRowView({ row, store, virtualRow, isSelected, isFresh, isHoveredUnderlying, onClick, onContextMenu, onHoverDerived }: SignalTableRowViewProps) {
+function SignalTableRowView({ merged, store, virtualRow, isSelected, isFresh, isHoveredUnderlying, onClick, onContextMenu, onHoverDerived }: SignalTableRowViewProps) {
+  const { row, pinned } = merged
   // Subscribes to just THIS row's token — a tick for any other token never
   // re-renders this row, which is what keeps 500 rows at 60fps under a
   // live tick stream.
@@ -542,19 +570,20 @@ function SignalTableRowView({ row, store, virtualRow, isSelected, isFresh, isHov
       style={{ gridTemplateColumns: GRID_TEMPLATE, transform: `translateY(${virtualRow.start}px)`, height: virtualRow.size }}
     >
       <span role="gridcell">
-        <TimeCell epochSeconds={row.time} />
+        <TimeCell epochSeconds={row.time} daily={isDailyInterval(params.candleInterval)} />
       </span>
       <span role="gridcell" className="flex items-center gap-1.5 truncate">
         <span className="truncate font-medium text-text-primary">{row.symbol}</span>
         <ExchangeChip exchange={row.exchange} />
-        {row.pinned && <Pin className="h-3 w-3 shrink-0 text-warning" aria-label="Pinned" />}
+        {pinned && <Pin className="h-3 w-3 shrink-0 text-warning" aria-label="Pinned" />}
       </span>
       <span role="gridcell">
         <InstrumentTypeChip type={instrumentType} />
       </span>
       <span role="gridcell" onMouseEnter={() => derived && onHoverDerived(true)} onMouseLeave={() => derived && onHoverDerived(false)}>
-        <SignalBadge signal={row.signal} />
+        {merged.signal ? <SignalBadge signal={merged.signal} /> : <EmptyKindCell />}
       </span>
+      <span role="gridcell">{merged.breakout ? <SignalBadge signal={merged.breakout} /> : <EmptyKindCell />}</span>
       <span role="gridcell" className="text-right">
         <PriceCell price={row.price} />
       </span>
@@ -564,14 +593,8 @@ function SignalTableRowView({ row, store, virtualRow, isSelected, isFresh, isHov
       <span role="gridcell" className="text-right">
         <ChangePercentCell value={change} />
       </span>
-      <span role="gridcell">
+      <span role="gridcell" className="pl-4">
         <RsiCell rsi={row.rsi} inherited={derived ? row.derivedFrom : undefined} bands={params} />
-      </span>
-      <span role="gridcell">
-        <HaStreakSparkline colors={row.haStreak} />
-      </span>
-      <span role="gridcell" className="text-right">
-        <LevelCell level={row.level} />
       </span>
       <span role="gridcell" className="flex items-center justify-end gap-1">
         <button
@@ -579,9 +602,9 @@ function SignalTableRowView({ row, store, virtualRow, isSelected, isFresh, isHov
           aria-label="Pin"
           onClick={(e) => {
             e.stopPropagation()
-            store.getState().togglePin(row.id)
+            for (const id of pinToggleIds(merged)) store.getState().togglePin(id)
           }}
-          className={cn('text-text-muted hover:text-text-primary', row.pinned && 'text-warning')}
+          className={cn('text-text-muted hover:text-text-primary', pinned && 'text-warning')}
         >
           <Pin className="h-3.5 w-3.5" />
         </button>
@@ -601,7 +624,7 @@ function SignalTableRowView({ row, store, virtualRow, isSelected, isFresh, isHov
           aria-label="Copy row as JSON"
           onClick={(e) => {
             e.stopPropagation()
-            void navigator.clipboard.writeText(JSON.stringify(row, null, 2))
+            void navigator.clipboard.writeText(JSON.stringify(merged.members.length > 1 ? merged.members : row, null, 2))
           }}
           className="text-text-muted hover:text-text-primary"
         >
@@ -610,6 +633,10 @@ function SignalTableRowView({ row, store, virtualRow, isSelected, isFresh, isHov
       </span>
     </div>
   )
+}
+
+function EmptyKindCell() {
+  return <span className="font-mono text-text-muted">—</span>
 }
 
 function GroupHeader({
@@ -633,7 +660,7 @@ function GroupHeader({
       style={{ transform: `translateY(${virtualRow.start}px)`, height: virtualRow.size }}
     >
       {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-      {signal}
+      {signalLabel(signal)}
       <span className="text-text-muted">({count})</span>
     </button>
   )

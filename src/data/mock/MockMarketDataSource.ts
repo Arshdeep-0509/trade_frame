@@ -1,4 +1,5 @@
-import { BASE_INTERVAL_MINUTES } from '../../strategy/resampleCandles'
+import { parseIntervalMinutes } from '../../strategy/constants'
+import { BASE_INTERVAL_MINUTES, resampleCandles } from '../../strategy/resampleCandles'
 import type { ScripRow, SearchResponse } from '../../types/api'
 import type { Candle, Exchange, Instrument, MarketTick } from '../../types/domain'
 import type { ConnectionState, IndexQuote, IndexQuoteKey, MarketDataSource } from '../MarketDataSource'
@@ -120,7 +121,7 @@ export class MockMarketDataSource implements MarketDataSource {
   // `interval` is part of the MarketDataSource contract (a real backend
   // would honour it directly) but this mock's CandleEngine only ever
   // produces a 5-minute base series — see the comment below.
-  async fetchHistoricalCandles(token: string, exchange: Exchange, _interval: string, daysBack: number): Promise<Candle[]> {
+  async fetchHistoricalCandles(token: string, exchange: Exchange, interval: string, daysBack: number): Promise<Candle[]> {
     await this.delay(80, 250)
 
     if (this.shouldFail()) {
@@ -129,13 +130,15 @@ export class MockMarketDataSource implements MarketDataSource {
 
     const startPrice = this.startPriceFor(token)
     const raw = this.universe.candleEngine.getRawHistoricalResponse(token, startPrice, daysBack)
-    // The mock's CandleEngine only ever generates a 5-minute base series —
-    // `interval` is the CALLER's desired granularity (which src/strategy/
-    // resampleCandles() aggregates up to afterwards), not this fetch's own.
-    // The still-forming-bar cutoff must always match the data's true native
-    // interval, never the caller's target, or a coarser target interval
-    // would wrongly keep several already-closed 5-minute bars "forming".
-    return parseHistoricalCandlesResponse(raw, BASE_INTERVAL_MINUTES, this.clock.now())
+    // The mock's CandleEngine only ever generates a 5-minute base series.
+    // The still-forming-bar cutoff must always match that native interval,
+    // never the caller's target, or a coarser target interval would wrongly
+    // keep several already-closed 5-minute bars "forming". A coarser
+    // multiple of 5 is then resampled from it; anything finer (e.g. 3
+    // minutes) can't be built from 5-minute bars, so it gets the base series.
+    const closed = parseHistoricalCandlesResponse(raw, BASE_INTERVAL_MINUTES, this.clock.now())
+    const target = parseIntervalMinutes(interval)
+    return target > BASE_INTERVAL_MINUTES && target % BASE_INTERVAL_MINUTES === 0 ? resampleCandles(closed, target) : closed
   }
 
   async loadScripMaster(): Promise<ScripRow[]> {

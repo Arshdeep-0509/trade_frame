@@ -51,8 +51,23 @@ export const DEFAULT_PARAMS: Readonly<StrategyParams> = Object.freeze({
  * never read it differently from one another.
  */
 export function parseIntervalMinutes(candleInterval: string): number {
+  // PARITY: the Python never runs on a daily interval — its digit extraction would read "1day" as 1 minute.
+  if (isDailyInterval(candleInterval)) return 24 * 60
   return Number(candleInterval.replace(/\D/g, '')) || 5
 }
+
+/** "1day" (one bar per trading session) rather than an intraday "<N>minute" interval. */
+export function isDailyInterval(candleInterval: string): boolean {
+  return /day$/i.test(candleInterval)
+}
+
+/** The candle intervals the screener offers, as candleInterval strings. */
+export const CANDLE_INTERVAL_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: '3minute', label: '3 min' },
+  { value: '5minute', label: '5 min' },
+  { value: '15minute', label: '15 min' },
+  { value: '1day', label: '1 day' },
+]
 
 /** Which params.StrategyParams keys differ from DEFAULT_PARAMS — for the "N modified parameters" UI. */
 export function overriddenParamKeys(params: StrategyParams): (keyof StrategyParams)[] {

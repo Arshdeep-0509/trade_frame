@@ -3,10 +3,10 @@ import { mapWithConcurrency } from '../../lib/concurrent'
 import { analyzeCandles } from '../../strategy/analyzeCandles'
 import { addOptionRecommendations } from '../../strategy/optionLegs'
 import { checkBreakout, checkSignal, selectVisibleRows } from '../../strategy/signals'
-import { parseIntervalMinutes, type StrategyParams } from '../../strategy/constants'
-import { BASE_INTERVAL_MINUTES, resampleCandles } from '../../strategy/resampleCandles'
+import type { StrategyParams } from '../../strategy/constants'
 import type { AtmMap, UniverseEntry } from '../../strategy/universe'
 import type { SignalRow } from '../../types/domain'
+import { fetchIntervalCandles } from './intervalCandles'
 
 export interface ScanError {
   symbol: string
@@ -97,12 +97,7 @@ export async function scanWatchlist(
     let error: ScanError | null = null
 
     try {
-      // Always fetch the mock's native 5-minute base series (see
-      // MockMarketDataSource.fetchHistoricalCandles's comment on why), then
-      // resample up to whatever the user's candleInterval param asks for.
-      const baseCandles = await dataSource.fetchHistoricalCandles(entry.token, entry.exchange, '5minute', 5)
-      const targetMinutes = parseIntervalMinutes(params.candleInterval)
-      const candles = targetMinutes === BASE_INTERVAL_MINUTES ? baseCandles : resampleCandles(baseCandles, targetMinutes)
+      const candles = await fetchIntervalCandles(dataSource, entry.token, entry.exchange, params.candleInterval)
 
       if (candles.length > 0) {
         const analyzed = analyzeCandles(candles, params)

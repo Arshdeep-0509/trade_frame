@@ -1,11 +1,9 @@
 import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { PanelErrorBoundary } from '../components/ui/PanelErrorBoundary'
-import { MockDevtoolsPanel } from '../data/mock'
 import { ScanPerfReadout } from '../features/rsi-ha/ScanPerfReadout'
 import { ToastStack } from '../features/rsi-ha/ToastStack'
 import { useUiStore } from '../store/uiStore'
-import { dataSource } from './dataSource'
 import { FirstRunTour } from './FirstRunTour'
 import { MobileNavChips } from './MobileNavChips'
 import { ShortcutsOverlay } from './ShortcutsOverlay'
@@ -17,8 +15,8 @@ import { StatusBar } from './StatusBar'
 
 export function AppShell() {
   const theme = useUiStore((s) => s.theme)
-  // /intraday reads real Master Trust data: the mock screener's status bar and footer don't describe it.
-  const onRealDataPage = useLocation().pathname.startsWith('/intraday')
+  // The screener's status bar and scan readout describe /rsi-ha only, not /intraday.
+  const onIntradayPage = useLocation().pathname.startsWith('/intraday')
 
   useEffect(() => {
     useScreenerStore.getState().start()
@@ -29,7 +27,7 @@ export function AppShell() {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
 
-  useGlobalShortcuts(useScreenerStore, dataSource)
+  useGlobalShortcuts(useScreenerStore)
 
   return (
     // dvh, not vh: on mobile, browser chrome (the address bar) shows and
@@ -42,19 +40,16 @@ export function AppShell() {
       <div className="flex min-h-0 flex-1">
         <LeftRail />
         <main className="min-w-0 flex-1 overflow-y-auto">
-          <PanelErrorBoundary panelName="Screener" diagnostics={() => ({ seed: dataSource.getDevState().seed })}>
+          <PanelErrorBoundary panelName="Screener">
             <Outlet />
           </PanelErrorBoundary>
         </main>
       </div>
-      {!onRealDataPage && <StatusBar />}
+      {!onIntradayPage && <StatusBar />}
       <footer role="contentinfo" className="border-t border-border bg-surface px-4 py-1 text-center text-[10px] text-text-muted">
-        {onRealDataPage
-          ? 'Market data from Master Trust via mastertrust_intraday_api.py. Not investment advice.'
-          : 'Mock market data generated locally. No broker connection. Not investment advice.'}
+        Market data from Master Trust via mastertrust_intraday_api.py. Not investment advice.
       </footer>
-      <MockDevtoolsPanel client={dataSource} />
-      {!onRealDataPage && <ScanPerfReadout store={useScreenerStore} />}
+      {!onIntradayPage && <ScanPerfReadout store={useScreenerStore} />}
       <ToastStack />
       <ShortcutsOverlay />
       <FirstRunTour />

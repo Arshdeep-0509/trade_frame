@@ -62,7 +62,7 @@ export function LeftRail() {
         <HistoryDrawer open={openPanel === 'history'} onClose={() => useUiStore.getState().setOpenPanel(null)} store={useScreenerStore} />
       </PanelErrorBoundary>
       <PanelErrorBoundary panelName="Settings">
-        <SettingsDrawer open={openPanel === 'settings'} onClose={() => useUiStore.getState().setOpenPanel(null)} dataSource={dataSource} />
+        <SettingsDrawer open={openPanel === 'settings'} onClose={() => useUiStore.getState().setOpenPanel(null)} />
       </PanelErrorBoundary>
     </>
   )

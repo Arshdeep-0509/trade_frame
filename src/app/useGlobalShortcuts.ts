@@ -1,19 +1,17 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { ClockSpeed, MockMarketDataSource } from '../data/mock'
 import type { ScreenerStore } from '../store/screenerStore'
 import { useUiStore } from '../store/uiStore'
 
-const SPEED_BY_DIGIT: Record<string, ClockSpeed> = { '1': 1, '2': 10, '3': 60, '4': 300 }
 const G_CHORD_TIMEOUT_MS = 800
 
 /**
  * App-wide shortcuts that make sense regardless of what's focused: pause,
- * rescan, replay speed, section navigation, and the cheat sheet itself.
+ * rescan, section navigation, and the cheat sheet itself.
  * Row-scoped nav (j/k/Enter, `/` to search) stays local to SignalsTable —
  * those only make sense when the table is what's on screen.
  */
-export function useGlobalShortcuts(store: ScreenerStore, dataSource: MockMarketDataSource): void {
+export function useGlobalShortcuts(store: ScreenerStore): void {
   const navigate = useNavigate()
   const pendingG = useRef(false)
   const pendingGTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -72,13 +70,6 @@ export function useGlobalShortcuts(store: ScreenerStore, dataSource: MockMarketD
       if (event.key === 'r') {
         event.preventDefault()
         void store.getState().runScanNow()
-        return
-      }
-
-      const speed = SPEED_BY_DIGIT[event.key]
-      if (speed) {
-        event.preventDefault()
-        dataSource.setSpeed(speed)
       }
     }
 
@@ -87,5 +78,5 @@ export function useGlobalShortcuts(store: ScreenerStore, dataSource: MockMarketD
       window.removeEventListener('keydown', onKeyDown)
       if (pendingGTimer.current) clearTimeout(pendingGTimer.current)
     }
-  }, [store, dataSource, navigate])
+  }, [store, navigate])
 }

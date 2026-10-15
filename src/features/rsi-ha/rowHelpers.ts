@@ -27,6 +27,13 @@ export function changePercent(row: Pick<ScreenerRow, 'price'>, liveLtp: number |
 
 export const EXCHANGES: readonly Exchange[] = ['NSE', 'NFO']
 
+/** What the UI calls each signal kind. The kinds themselves ('CE Buy'/'PE Buy') stay as the engine emits them — this is display text only. */
+export function signalLabel(kind: SignalKind): string {
+  if (kind === 'CE Buy') return 'Call Buy'
+  if (kind === 'PE Buy') return 'Put Buy'
+  return kind
+}
+
 export const SIGNAL_KINDS: readonly SignalKind[] = ['BUY', 'SELL', 'BREAKOUT-UP', 'BREAKOUT-DOWN', 'CE Buy', 'PE Buy']
 
 export const INSTRUMENT_TYPES: readonly InstrumentType[] = ['EQ', 'FUT', 'CE', 'PE']

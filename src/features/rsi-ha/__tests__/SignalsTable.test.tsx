@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ConnectionState, IndexQuote, IndexQuoteKey, MarketDataSource } from '../../../data/MarketDataSource'
@@ -100,8 +100,17 @@ describe('SignalsTable virtualization', () => {
     expect(renderedRows.length).toBeLessThan(100)
   })
 
-  it('shows the correct total signal count in the toolbar', () => {
+  it('shows the correct total signal count in the toolbar, with breakout-only rows hidden by default', () => {
     renderTableWith500Rows()
+    // Every other fixture row is a BREAKOUT-* on its own token, so it has no RSI + HA signal.
+    expect(screen.getByText(/250 of 500 signals/)).toBeInTheDocument()
+    expect(screen.getByText(/250 breakout-only hidden/)).toBeInTheDocument()
+  })
+
+  it('the breakout-only toggle brings those rows back', () => {
+    renderTableWith500Rows()
+    fireEvent.click(screen.getAllByRole('switch', { name: /Show breakout-only rows/ })[0])
     expect(screen.getByText(/500 of 500 signals/)).toBeInTheDocument()
+    expect(screen.queryByText(/breakout-only hidden/)).not.toBeInTheDocument()
   })
 })

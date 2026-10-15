@@ -89,10 +89,26 @@ describe('HttpMarketDataSource', () => {
   it('loadScripMaster passes the configured filters', async () => {
     const rows = [{ exchange: 'NFO', instrument_name: 'FUTSTK', trading_symbol: 'X26SEPFUT', exchange_token: 5, close_price: 2500, expiry: '29-Sep-2026', company_name: 'X', strike: '', option_type: '' }]
     const { impl, calls } = fakeFetch(() => ({ body: rows }))
-    const source = new HttpMarketDataSource({ fetchImpl: impl, scripMasterQuery: { exchange: 'NFO', instrumentName: 'FUTSTK' } })
+    const source = new HttpMarketDataSource({ fetchImpl: impl, scripMasterQueries: [{ exchange: 'NFO', instrumentName: 'FUTSTK' }] })
 
     expect(await source.loadScripMaster()).toEqual(rows)
     expect(calls[0].search).toBe('?exchange=NFO&instrument_name=FUTSTK')
+  })
+
+  it('loadScripMaster requests every configured slice and concatenates them in order', async () => {
+    const eq = { exchange: 'NSE', instrument_name: 'EQ', trading_symbol: 'X-EQ', exchange_token: 1, close_price: 2500, expiry: '', company_name: 'X', strike: '', option_type: '' }
+    const opt = { exchange: 'NFO', instrument_name: 'OPTSTK', trading_symbol: 'X26SEP2500CE', exchange_token: 2, close_price: 50, expiry: '29-Sep-2026', company_name: 'X', strike: 2500, option_type: 'CE' }
+    const { impl, calls } = fakeFetch((url) => ({ body: url.searchParams.get('exchange') === 'NSE' ? [eq] : [opt] }))
+    const source = new HttpMarketDataSource({
+      fetchImpl: impl,
+      scripMasterQueries: [
+        { exchange: 'NSE', instrumentName: 'EQ' },
+        { exchange: 'NFO', instrumentName: 'OPTSTK' },
+      ],
+    })
+
+    expect(await source.loadScripMaster()).toEqual([eq, opt])
+    expect(calls.map((c) => c.search)).toEqual(['?exchange=NSE&instrument_name=EQ', '?exchange=NFO&instrument_name=OPTSTK'])
   })
 
   it('fetchIndexQuotes uses the resolved index tokens, includes the forming candle, and caches', async () => {

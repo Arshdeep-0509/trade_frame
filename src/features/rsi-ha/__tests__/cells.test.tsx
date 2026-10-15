@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PARAMS } from '../../../strategy/constants'
 import type { SignalKind } from '../../../types/domain'
 import { LtpCell, RsiCell, SignalBadge } from '../cells'
-import { SIGNAL_KINDS } from '../rowHelpers'
+import { SIGNAL_KINDS, signalLabel } from '../rowHelpers'
 
 // Spec name mapping: bits.tsx -> cells.tsx; RsiMeter -> RsiCell's inline bar.
 // "LtpCell never changes its own width" is a LAYOUT property (jsdom has no
@@ -98,7 +98,7 @@ describe('RsiCell — value + 0-100 meter', () => {
 describe('SignalBadge — never colour alone', () => {
   it.each(SIGNAL_KINDS.map((k) => [k]))('%s renders a glyph AND its text label', (signal: SignalKind) => {
     const { container } = render(<SignalBadge signal={signal} />)
-    expect(container.textContent).toContain(signal)
+    expect(container.textContent).toContain(signalLabel(signal))
     const glyph = container.querySelector('svg, [data-glyph]')
     expect(glyph).not.toBeNull()
   })

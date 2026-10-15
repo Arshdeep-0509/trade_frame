@@ -6,13 +6,15 @@ import { Input } from '../../components/ui/Input'
 import { RangeSlider } from '../../components/ui/RangeSlider'
 import { Toggle } from '../../components/ui/Toggle'
 import { cn } from '../../lib/cn'
-import { EXCHANGES, INSTRUMENT_TYPES, SIGNAL_KINDS } from './rowHelpers'
+import { EXCHANGES, INSTRUMENT_TYPES, SIGNAL_KINDS, signalLabel } from './rowHelpers'
 import type { useTableFilters } from './useTableFilters'
 
 export interface FilterBarProps {
   filters: ReturnType<typeof useTableFilters>
   showNseEquityRows: boolean
   onShowNseEquityRowsChange: (show: boolean) => void
+  showBreakoutOnlyRows: boolean
+  onShowBreakoutOnlyRowsChange: (show: boolean) => void
 }
 
 const chipBase = 'h-10 shrink-0 whitespace-nowrap rounded border px-2 text-xs font-medium transition-colors md:h-auto md:py-0.5'
@@ -35,12 +37,16 @@ function MoreFilterFields({
   setMinPrice,
   showNseEquityRows,
   onShowNseEquityRowsChange,
+  showBreakoutOnlyRows,
+  onShowBreakoutOnlyRowsChange,
 }: {
   f: ReturnType<typeof useTableFilters>['filters']
   setRsiRange: (min: number, max: number) => void
   setMinPrice: (value: number) => void
   showNseEquityRows: boolean
   onShowNseEquityRowsChange: (show: boolean) => void
+  showBreakoutOnlyRows: boolean
+  onShowBreakoutOnlyRowsChange: (show: boolean) => void
 }) {
   return (
     <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-center">
@@ -71,11 +77,17 @@ function MoreFilterFields({
         onChange={onShowNseEquityRowsChange}
         label="Show underlying equity signals (hidden by default, matching the screener's output rule)"
       />
+
+      <Toggle
+        checked={showBreakoutOnlyRows}
+        onChange={onShowBreakoutOnlyRowsChange}
+        label="Show breakout-only rows (no RSI + Heikin-Ashi signal)"
+      />
     </div>
   )
 }
 
-export function FilterBar({ filters, showNseEquityRows, onShowNseEquityRowsChange }: FilterBarProps) {
+export function FilterBar({ filters, showNseEquityRows, onShowNseEquityRowsChange, showBreakoutOnlyRows, onShowBreakoutOnlyRowsChange }: FilterBarProps) {
   const { filters: f, searchInput, setSearchInput, toggleSignal, toggleExchange, toggleInstrumentType, setRsiRange, setMinPrice, clearAll, activeFilterCount } =
     filters
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false)
@@ -126,7 +138,7 @@ export function FilterBar({ filters, showNseEquityRows, onShowNseEquityRowsChang
       <div className="flex gap-1 overflow-x-auto px-4" role="group" aria-label="Filter by signal">
         {SIGNAL_KINDS.map((signal) => (
           <Chip key={signal} active={f.signals.includes(signal)} onClick={() => toggleSignal(signal)}>
-            {signal}
+            {signalLabel(signal)}
           </Chip>
         ))}
         <span className="mx-1 hidden h-6 w-px shrink-0 bg-border sm:block" aria-hidden="true" />
@@ -151,6 +163,8 @@ export function FilterBar({ filters, showNseEquityRows, onShowNseEquityRowsChang
           setMinPrice={setMinPrice}
           showNseEquityRows={showNseEquityRows}
           onShowNseEquityRowsChange={onShowNseEquityRowsChange}
+          showBreakoutOnlyRows={showBreakoutOnlyRows}
+          onShowBreakoutOnlyRowsChange={onShowBreakoutOnlyRowsChange}
         />
       </div>
 
@@ -162,6 +176,8 @@ export function FilterBar({ filters, showNseEquityRows, onShowNseEquityRowsChang
             setMinPrice={setMinPrice}
             showNseEquityRows={showNseEquityRows}
             onShowNseEquityRowsChange={onShowNseEquityRowsChange}
+            showBreakoutOnlyRows={showBreakoutOnlyRows}
+            onShowBreakoutOnlyRowsChange={onShowBreakoutOnlyRowsChange}
           />
         </div>
       </BottomSheet>

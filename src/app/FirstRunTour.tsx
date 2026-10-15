@@ -12,7 +12,7 @@ const STEPS: readonly TourStep[] = [
   {
     title: 'What this screener does',
     body:
-      'It scans a generated (simulated) universe of NSE equities and stock futures every few minutes, computing RSI and Heikin-Ashi candles for each, and surfaces the instruments where both line up — the same logic as the reference Python screener, ported 1:1.',
+      'It scans real Master Trust data for NSE equities and stock futures every few minutes, computing RSI and Heikin-Ashi candles for each, and surfaces the instruments where both line up — the same logic as the reference Python screener, ported 1:1.',
   },
   {
     title: 'What the bands mean',

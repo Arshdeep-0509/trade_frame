@@ -157,7 +157,7 @@ export function HistoryDrawer({ open, onClose, store }: HistoryDrawerProps) {
         </div>
 
         <p className="border-b border-border-hairline bg-warning/10 px-4 py-2 text-[11px] text-warning">
-          Hypothetical, mock data, no slippage or costs — not a backtest.
+          Hypothetical, no slippage or costs — not a backtest.
         </p>
 
         {/*

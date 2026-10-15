@@ -9,14 +9,14 @@ import { formatINR, formatISTDate, formatISTTime, formatNumber } from '../../lib
 import type { ScreenerStore } from '../../store/screenerStore'
 import type { ScreenerRow } from '../../store/types'
 import { analyzeCandles } from '../../strategy/analyzeCandles'
-import { parseIntervalMinutes } from '../../strategy/constants'
+import { isDailyInterval } from '../../strategy/constants'
 import { explainBreakout, explainSignal, type PredicateCheck } from '../../strategy/explainSignal'
 import { haStreakLength } from '../../strategy/indicators'
-import { BASE_INTERVAL_MINUTES, resampleCandles } from '../../strategy/resampleCandles'
 import type { AnalyzedCandle, Candle } from '../../types/domain'
 import { ExchangeChip, LtpCell, SignalBadge } from './cells'
 import { CHART_HEIGHT_CLASS } from './chartHeight'
 import { getInstrumentType, isDerivedRow } from './rowHelpers'
+import { historyLabel, intervalLabel } from './intervalCandles'
 import { ChartSkeleton, LazySignalChart } from './LazySignalChart'
 
 export interface SignalDetailProps {
@@ -113,17 +113,12 @@ export function SignalDetail({ row, rowList, store, onClose, onNavigate }: Signa
       return
     }
     let cancelled = false
-    const targetMinutes = parseIntervalMinutes(store.getState().params.candleInterval)
     void store
       .getState()
       .fetchCandlesForToken(source.token, source.exchange)
-      .then((base) => {
-        if (cancelled) return
-        // Chart candles must go through the same resampling step the
-        // scanner used to evaluate this row, or the chart could show a
-        // different bar count/shape than what the signal was actually
-        // computed from.
-        setCandles(targetMinutes === BASE_INTERVAL_MINUTES ? base : resampleCandles(base, targetMinutes))
+      .then((intervalCandles) => {
+        // Already at the scan's candleInterval (fetchIntervalCandles), so the chart shows the exact series the signal was computed from.
+        if (!cancelled) setCandles(intervalCandles)
       })
     return () => {
       cancelled = true
@@ -200,7 +195,7 @@ export function SignalDetail({ row, rowList, store, onClose, onNavigate }: Signa
             <div className="mb-2 flex items-center justify-between">
               <Tooltip label="The in-progress bar is dropped before any calculation, exactly as the screener does — RSI/HA/signals are only ever computed on a closed candle." side="bottom">
                 <span className="inline-flex cursor-help items-center gap-1 text-xs text-text-muted">
-                  5-minute · last 5 sessions · forming candle excluded
+                  {intervalLabel(params.candleInterval)} · {historyLabel(params.candleInterval)} · forming candle excluded
                   <Info className="h-3 w-3" />
                 </span>
               </Tooltip>
@@ -274,7 +269,7 @@ export function SignalDetail({ row, rowList, store, onClose, onNavigate }: Signa
                       const isSignalBar = bar.time === row.time
                       return (
                         <tr key={bar.time} className={cn('border-t border-border-hairline', isSignalBar && 'bg-neutral/10')}>
-                          <td className="py-1 pr-2 font-mono tabular-nums text-text-secondary">{formatISTTime(new Date(bar.time * 1000))}</td>
+                          <td className="py-1 pr-2 font-mono tabular-nums text-text-secondary">{isDailyInterval(params.candleInterval) ? formatISTDate(new Date(bar.time * 1000)) : formatISTTime(new Date(bar.time * 1000))}</td>
                           <td className="py-1 pr-2 text-right font-mono tabular-nums text-text-primary">{formatNumber(bar.close, 2)}</td>
                           <td className="py-1 pr-2">
                             <span className={cn('inline-block h-2.5 w-2.5 rounded-full', bar.haColor === 'green' ? 'bg-bullish' : 'bg-bearish')} />

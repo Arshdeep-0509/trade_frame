@@ -1,5 +1,6 @@
 import { Select } from '../../components/ui/Select'
 import { formatINR } from '../../lib/formatters'
+import { CANDLE_INTERVAL_OPTIONS } from '../../strategy/constants'
 import { useWatchlistStore } from '../../store/watchlistStore'
 import type { ScreenerStore } from '../../store/screenerStore'
 import type { UniverseMode } from '../../store/types'
@@ -22,6 +23,7 @@ export function UniverseSelector({ store }: UniverseSelectorProps) {
   const watchlists = useWatchlistStore((s) => s.watchlists)
   const activeWatchlistId = useWatchlistStore((s) => s.activeWatchlistId)
   const minPrice = store((s) => s.params.minPrice)
+  const candleInterval = store((s) => s.params.candleInterval)
 
   const value: SelectorValue = universeMode === 'watchlist' && activeWatchlistId ? `watchlist:${activeWatchlistId}` : universeMode === 'watchlist' ? 'both' : universeMode
 
@@ -48,6 +50,19 @@ export function UniverseSelector({ store }: UniverseSelectorProps) {
         {watchlists.map((w) => (
           <option key={w.id} value={`watchlist:${w.id}`}>
             Watchlist: {w.name}
+          </option>
+        ))}
+      </Select>
+
+      {/* Same param as the Parameters drawer's "Candle interval": changing it re-runs the scan on that interval's candles. */}
+      <Select
+        aria-label="Candle interval"
+        value={candleInterval}
+        onChange={(e) => void store.getState().setParams({ ...store.getState().params, candleInterval: e.target.value })}
+      >
+        {CANDLE_INTERVAL_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </Select>

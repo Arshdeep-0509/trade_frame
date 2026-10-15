@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
-import { FlaskConical, Keyboard, Moon, Radio, Settings, Sun, TrendingUp } from 'lucide-react'
+import { Keyboard, Moon, Radio, Settings, Sun, TrendingUp } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { formatISTTime } from '../lib/formatters'
 import { getMarketSession, type MarketSession } from '../lib/marketSession'
@@ -20,8 +20,8 @@ export function TopBar() {
   const [now, setNow] = useState(() => new Date())
   const connectionState = useScreenerStore((s) => s.connectionState)
   const theme = useUiStore((s) => s.theme)
-  // /intraday reads real Master Trust data (and shows its own connection badge); only the other pages are simulated.
-  const onRealDataPage = useLocation().pathname.startsWith('/intraday')
+  // /intraday shows its own Master Trust connection badge, so the screener's connection dot is hidden there.
+  const onIntradayPage = useLocation().pathname.startsWith('/intraday')
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000)
@@ -60,25 +60,11 @@ export function TopBar() {
             </NavLink>
           ))}
         </nav>
-        {onRealDataPage ? (
-          <Badge variant="bullish" outline className="shrink-0" title="This page reads real market data from Master Trust.">
-            <Radio className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span className="hidden sm:inline">MASTER TRUST DATA</span>
-            <span className="sm:hidden">REAL</span>
-          </Badge>
-        ) : (
-          <Badge
-            variant="warning"
-            outline
-            className="shrink-0"
-            title="Every number on screen comes from a locally-generated mock market, not a real broker feed."
-          >
-            <FlaskConical className="h-3 w-3 shrink-0" aria-hidden="true" />
-            {/* Shrinks to "SIMULATED" below sm — this marker never disappears entirely, at any width. */}
-            <span className="hidden sm:inline">PROTOTYPE — SIMULATED DATA</span>
-            <span className="sm:hidden">SIMULATED</span>
-          </Badge>
-        )}
+        <Badge variant="bullish" outline className="shrink-0" title="Every page reads real market data from Master Trust.">
+          <Radio className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="hidden sm:inline">MASTER TRUST DATA</span>
+          <span className="sm:hidden">REAL</span>
+        </Badge>
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
@@ -89,18 +75,17 @@ export function TopBar() {
           wide enough to overflow that width if they joined in at the same
           breakpoint — confirmed by scripts/responsive-check.mjs at 768px.
         */}
-        {/* The "(simulated market clock)" suffix joins at xl: with the Screener/Intraday nav on the left, the full string overflowed at exactly 1024px. Below xl the same words stay available as the tooltip, and the PROTOTYPE — SIMULATED DATA pill is visible at every width regardless. */}
         <span
           className="hidden shrink-0 font-mono text-xs tabular-nums text-text-secondary lg:inline"
-          title={onRealDataPage ? `${formatISTTime(now)} IST` : `${formatISTTime(now)} IST (simulated market clock)`}
+          title={`${formatISTTime(now)} IST`}
         >
-          {formatISTTime(now)} IST{!onRealDataPage && <span className="hidden xl:inline"> (simulated market clock)</span>}
+          {formatISTTime(now)} IST
         </span>
         <Badge variant={sessionVariant[session]} className="hidden shrink-0 lg:inline-flex">
           {session}
         </Badge>
-        {/* The mock feed's connection; /intraday shows its own Master Trust connection badge instead. */}
-        {!onRealDataPage && (
+        {/* The screener's Master Trust connection; /intraday shows its own connection badge instead. */}
+        {!onIntradayPage && (
           <span className="hidden shrink-0 sm:inline-flex">
             <StatusDot status={connectionState} />
           </span>

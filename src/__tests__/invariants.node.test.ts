@@ -97,13 +97,11 @@ describe('9. ARCHITECTURE BOUNDARIES', () => {
     expect(violations).toEqual([])
   })
 
-  it('nothing outside src/data/ constructs or value-imports MockMarketDataSource except the one wiring point', () => {
-    // app/dataSource.ts is this codebase's single wiring point (the spec's "Providers.tsx").
+  it('the running app never constructs or value-imports MockMarketDataSource — every page reads real Master Trust data', () => {
     // Type-only imports are allowed for the dev-only replay/speed/seed controls that
     // BACKEND-HANDOFF.md lists as "does not carry over to a real backend".
-    const WIRING = 'app/dataSource.ts'
     const violations: string[] = []
-    for (const file of FILES.filter((f) => !rel(f).startsWith('data/') && rel(f) !== WIRING)) {
+    for (const file of FILES.filter((f) => !rel(f).startsWith('data/'))) {
       const code = codeOf(file)
       for (const m of code.matchAll(/import\s+(type\s+)?\{([^}]*)\}\s+from\s+'[^']*data\/mock[^']*'/g)) {
         const typeOnly = Boolean(m[1])
@@ -114,7 +112,6 @@ describe('9. ARCHITECTURE BOUNDARIES', () => {
       if (/new\s+MockMarketDataSource\s*\(/.test(code)) violations.push(`${rel(file)} (constructs it)`)
     }
     expect(violations).toEqual([])
-    expect(/new\s+MockMarketDataSource\s*\(/.test(codeOf(path.join(SRC, WIRING)))).toBe(true)
   })
 
   it('PrimusTick (the raw, UNCONFIRMED wire format) is referenced only inside the data layer', () => {

@@ -17,11 +17,20 @@ export interface IndexInstrument {
   error?: string
 }
 
+export interface ScripMasterQuery {
+  exchange?: string
+  instrumentName?: string
+}
+
 export interface HttpMarketDataSourceOptions {
   /** '' = same origin (the Vite dev/preview proxy forwards /api to the Python service). */
   baseUrl?: string
-  /** Exact-match filters passed to /api/scrip-master, so only the rows a page needs cross the wire. */
-  scripMasterQuery?: { exchange?: string; instrumentName?: string }
+  /**
+   * Exact-match filters passed to /api/scrip-master, so only the rows a page
+   * needs cross the wire. One request per entry, results concatenated in
+   * order. Omitted or empty = the whole master in one request.
+   */
+  scripMasterQueries?: ScripMasterQuery[]
   /** How often one batch of tokens is polled for a fresh price while the market is open. */
   tickPollMs?: number
   /** Tokens polled per batch. Priority (visible) tokens go first; the rest rotate through the leftover slots. */
@@ -52,7 +61,7 @@ const CLOSED_RECHECK_MS = 30_000
  */
 export class HttpMarketDataSource implements MarketDataSource {
   private readonly baseUrl: string
-  private readonly scripMasterQuery: HttpMarketDataSourceOptions['scripMasterQuery']
+  private readonly scripMasterQueries: ScripMasterQuery[]
   private readonly tickPollMs: number
   private readonly tickBatchSize: number
   private readonly fetchImpl: typeof fetch
@@ -67,7 +76,7 @@ export class HttpMarketDataSource implements MarketDataSource {
 
   constructor(options: HttpMarketDataSourceOptions = {}) {
     this.baseUrl = (options.baseUrl ?? '').replace(/\/$/, '')
-    this.scripMasterQuery = options.scripMasterQuery
+    this.scripMasterQueries = options.scripMasterQueries ?? []
     this.tickPollMs = options.tickPollMs ?? 5_000
     this.tickBatchSize = Math.max(1, options.tickBatchSize ?? 25)
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis)
@@ -90,10 +99,16 @@ export class HttpMarketDataSource implements MarketDataSource {
   }
 
   async loadScripMaster(): Promise<ScripRow[]> {
-    const query: Record<string, string> = {}
-    if (this.scripMasterQuery?.exchange) query.exchange = this.scripMasterQuery.exchange
-    if (this.scripMasterQuery?.instrumentName) query.instrument_name = this.scripMasterQuery.instrumentName
-    const rows = await this.getJson<ScripRow[]>('/api/scrip-master', query)
+    const queries = this.scripMasterQueries.length > 0 ? this.scripMasterQueries : [{}]
+    const batches = await Promise.all(
+      queries.map((q) => {
+        const query: Record<string, string> = {}
+        if (q.exchange) query.exchange = q.exchange
+        if (q.instrumentName) query.instrument_name = q.instrumentName
+        return this.getJson<ScripRow[]>('/api/scrip-master', query)
+      }),
+    )
+    const rows = batches.flat()
     for (const row of rows) this.exchangeByToken.set(String(row.exchange_token), row.exchange)
     return rows
   }

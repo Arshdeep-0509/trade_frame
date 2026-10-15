@@ -1,10 +1,10 @@
 import type { MarketDataSource } from '../../data/MarketDataSource'
 import { analyzeCandles } from '../../strategy/analyzeCandles'
 import { checkBreakout, checkSignal } from '../../strategy/signals'
-import { parseIntervalMinutes, type StrategyParams } from '../../strategy/constants'
-import { BASE_INTERVAL_MINUTES, resampleCandles } from '../../strategy/resampleCandles'
+import type { StrategyParams } from '../../strategy/constants'
 import type { UniverseEntry } from '../../strategy/universe'
 import type { AnalyzedCandle, Candle } from '../../types/domain'
+import { fetchIntervalCandles } from './intervalCandles'
 
 const CONCURRENCY = 50
 
@@ -66,9 +66,7 @@ export async function findNextSignalTimestamp(
 
   const perSymbol = await mapWithConcurrency<UniverseEntry, PerSymbolSeries | null>(universe, CONCURRENCY, async (entry) => {
     try {
-      const baseCandles = await dataSource.fetchHistoricalCandles(entry.token, entry.exchange, '5minute', 5)
-      const targetMinutes = parseIntervalMinutes(params.candleInterval)
-      const candles = targetMinutes === BASE_INTERVAL_MINUTES ? baseCandles : resampleCandles(baseCandles, targetMinutes)
+      const candles = await fetchIntervalCandles(dataSource, entry.token, entry.exchange, params.candleInterval)
       const analyzed = candles.length > 0 ? analyzeCandles(candles, params) : []
       return { candles, analyzed }
     } catch {
