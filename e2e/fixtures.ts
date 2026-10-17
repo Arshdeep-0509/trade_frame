@@ -45,8 +45,11 @@ export const test = base.extend<Fixtures>({
       await page.clock.resume()
     }
     // The first-run tour is a modal: dismissed up front so it never sits over what a test clicks.
+    // A logged-in session too: every page but /login and /register needs one (see RequireAuth).
     await page.addInitScript(() => {
       window.localStorage.setItem('rsi-ha:tour-dismissed', JSON.stringify({ version: 1, data: true }))
+      const session = { accessToken: 'e2e', tokenType: 'bearer', expiresAt: 4102444800000, user: { id: 1, role: 'user', email: 'e2e@example.com', phone: null, canCreateAdmins: false } }
+      window.localStorage.setItem('rsi-ha:auth-session', JSON.stringify({ version: 1, data: session }))
     })
 
     await use(page)

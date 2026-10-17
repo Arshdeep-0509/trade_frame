@@ -22,3 +22,26 @@ export async function mapWithConcurrency<T, R>(items: readonly T[], limit: numbe
   await Promise.all(Array.from({ length: workerCount }, () => worker()))
   return results
 }
+
+/**
+ * Wraps an async function so at most `limit` calls run at once; the rest wait
+ * their turn in call order. Used to keep the screener's bursts of candle
+ * requests from taking every one of the browser's connections to the API.
+ */
+export function limitConcurrency<A extends unknown[], R>(fn: (...args: A) => Promise<R>, limit: number): (...args: A) => Promise<R> {
+  let running = 0
+  const waiting: (() => void)[] = []
+
+  return async (...args: A): Promise<R> => {
+    // A finishing call hands its slot straight to the next waiter (no window for a newcomer to jump in).
+    if (running >= limit) await new Promise<void>((resolve) => waiting.push(resolve))
+    else running += 1
+    try {
+      return await fn(...args)
+    } finally {
+      const next = waiting.shift()
+      if (next) next()
+      else running -= 1
+    }
+  }
+}

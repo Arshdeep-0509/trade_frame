@@ -1,4 +1,5 @@
 import { HttpMarketDataSource } from '../data/http/HttpMarketDataSource'
+import { marketFetch } from './marketFetch'
 
 /**
  * The /rsi-ha screener's data source: real Master Trust data via the backend
@@ -13,6 +14,8 @@ import { HttpMarketDataSource } from '../data/http/HttpMarketDataSource'
  */
 export const dataSource = new HttpMarketDataSource({
   baseUrl: import.meta.env.VITE_INTRADAY_API_BASE ?? '',
+  // The logged-in user's token, and a bounded number in flight (see marketFetch.ts).
+  fetchImpl: marketFetch,
   scripMasterQueries: [
     { exchange: 'NSE', instrumentName: 'EQ' },
     { exchange: 'NFO', instrumentName: 'FUTSTK' },

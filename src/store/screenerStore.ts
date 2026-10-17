@@ -223,7 +223,11 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
             draft.isPaused = s.isPaused
           })
         })
-        void get().loadUniverse().then(() => get().runScanNow())
+        void get()
+          .loadUniverse()
+          .then(() => {
+            if (get().scanState !== 'error') return get().runScanNow()
+          })
       },
 
       stop() {
@@ -240,12 +244,18 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
           draft.scanState = 'loading-universe'
         })
 
-        const {
-          universe,
-          atmMap: freshAtmMap,
-          stats,
-          scripRows,
-        } = await buildUniverse(deps.dataSource, get().universeMode, get().params, deps.now(), get().watchlistTokens)
+        let built: Awaited<ReturnType<typeof buildUniverse>>
+        try {
+          built = await buildUniverse(deps.dataSource, get().universeMode, get().params, deps.now(), get().watchlistTokens)
+        } catch (err) {
+          // Recorded like a failed scan (the errors strip shows it, with Retry) instead of an unhandled rejection.
+          set((draft) => {
+            draft.scanState = 'error'
+            draft.errors = [...draft.errors, { symbol: '*', message: err instanceof Error ? err.message : String(err) }]
+          })
+          return
+        }
+        const { universe, atmMap: freshAtmMap, stats, scripRows } = built
         atmMap = freshAtmMap
 
         set((draft) => {

@@ -168,4 +168,22 @@ describe('screenerStore', () => {
     expect(store.getState().liveLtp.get('T1')).toBe(12346)
     expect(store.getState().rows.some((r) => r.symbol === 'BUYER-EQ')).toBe(false)
   })
+
+  it('a failed universe load is recorded as an error (shown with Retry), not an unhandled rejection, and start() skips the scan', async () => {
+    const dataSource = new FakeDataSource()
+    const failingLoad = vi.spyOn(dataSource, 'loadScripMaster').mockRejectedValueOnce(new Error('/api/scrip-master failed (HTTP 401): Not logged in.'))
+    const runScan = vi.fn()
+    store = createScreenerStore({ dataSource, now: () => 1767609600, runScan })
+
+    store.getState().start()
+    await vi.waitFor(() => expect(store?.getState().scanState).toBe('error'))
+    expect(store.getState().errors).toEqual([{ symbol: '*', message: '/api/scrip-master failed (HTTP 401): Not logged in.' }])
+    expect(runScan).not.toHaveBeenCalled()
+
+    // The next load (Retry) succeeds normally.
+    await store.getState().loadUniverse()
+    expect(failingLoad).toHaveBeenCalledTimes(2)
+    expect(store.getState().scanState).toBe('idle')
+    expect(store.getState().universe.length).toBeGreaterThan(0)
+  })
 })

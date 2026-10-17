@@ -1,4 +1,5 @@
 import { HttpMarketDataSource } from '../data/http/HttpMarketDataSource'
+import { marketFetch } from './marketFetch'
 
 /**
  * /intraday's data source: real Master Trust data via mastertrust_intraday_api.py.
@@ -10,5 +11,7 @@ import { HttpMarketDataSource } from '../data/http/HttpMarketDataSource'
  */
 export const intradayDataSource = new HttpMarketDataSource({
   baseUrl: import.meta.env.VITE_INTRADAY_API_BASE ?? '',
+  // The logged-in user's token, and a bounded number in flight (see marketFetch.ts).
+  fetchImpl: marketFetch,
   scripMasterQueries: [{ exchange: 'NFO', instrumentName: 'FUTSTK' }],
 })

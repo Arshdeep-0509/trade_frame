@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapWithConcurrency } from '../concurrent'
+import { limitConcurrency, mapWithConcurrency } from '../concurrent'
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -48,5 +48,51 @@ describe('mapWithConcurrency', () => {
         return i
       }),
     ).rejects.toThrow('boom')
+  })
+})
+
+describe('limitConcurrency', () => {
+  it('never runs more than `limit` calls at once, and runs them all in call order', async () => {
+    let inFlight = 0
+    let peak = 0
+    const started: number[] = []
+    const limited = limitConcurrency(async (i: number) => {
+      started.push(i)
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await delay(i % 3)
+      inFlight -= 1
+      return i * 2
+    }, 3)
+
+    const results = await Promise.all(Array.from({ length: 20 }, (_, i) => limited(i)))
+    expect(results).toEqual(Array.from({ length: 20 }, (_, i) => i * 2))
+    expect(peak).toBe(3)
+    expect(started).toEqual(Array.from({ length: 20 }, (_, i) => i))
+  })
+
+  it('keeps the limit when calls arrive while others are finishing', async () => {
+    let inFlight = 0
+    let peak = 0
+    const limited = limitConcurrency(async () => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await delay(1)
+      inFlight -= 1
+    }, 2)
+    const first = Array.from({ length: 4 }, () => limited())
+    await delay(1)
+    await Promise.all([...first, ...Array.from({ length: 4 }, () => limited())])
+    expect(peak).toBe(2)
+  })
+
+  it('frees the slot when a call fails', async () => {
+    const limited = limitConcurrency(async (fail: boolean) => {
+      await delay(1)
+      if (fail) throw new Error('boom')
+      return 'ok'
+    }, 1)
+    await expect(limited(true)).rejects.toThrow('boom')
+    await expect(limited(false)).resolves.toBe('ok')
   })
 })

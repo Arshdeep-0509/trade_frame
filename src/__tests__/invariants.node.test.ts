@@ -134,6 +134,7 @@ describe('9. ARCHITECTURE BOUNDARIES', () => {
       'store/watchlistStore.ts': 'unique id generation, not market time',
       'store/intradayStore.ts': 'UI repaint throttle (createThrottle) — paces renders, not the market',
       'store/screenerStore.ts': 'lastScanDurationMs — measures how long a scan really took',
+      'features/auth/authStore.ts': 'login session expiry — a real token lifetime, not market time',
     }
     const offenders = FILES.filter((f) => /\bDate\.now\s*\(/.test(codeOf(f))).map(rel)
     expect(offenders.filter((f) => !(f in ALLOWED))).toEqual([])

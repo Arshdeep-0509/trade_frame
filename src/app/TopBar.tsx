@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
-import { Keyboard, Moon, Radio, Settings, Sun, TrendingUp } from 'lucide-react'
+import { Keyboard, LogOut, Moon, Radio, Settings, Sun, TrendingUp } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { formatISTTime } from '../lib/formatters'
 import { getMarketSession, type MarketSession } from '../lib/marketSession'
@@ -9,6 +9,7 @@ import { Badge } from '../components/ui/Badge'
 import { IconButton } from '../components/ui/IconButton'
 import { useScreenerStore } from './screenerStore'
 import { useUiStore } from '../store/uiStore'
+import { useAuthStore } from '../features/auth/authStore'
 
 const sessionVariant: Record<MarketSession, 'bullish' | 'warning' | 'default'> = {
   OPEN: 'bullish',
@@ -20,6 +21,7 @@ export function TopBar() {
   const [now, setNow] = useState(() => new Date())
   const connectionState = useScreenerStore((s) => s.connectionState)
   const theme = useUiStore((s) => s.theme)
+  const user = useAuthStore((s) => s.session?.user ?? null)
   // /intraday shows its own Master Trust connection badge, so the screener's connection dot is hidden there.
   const onIntradayPage = useLocation().pathname.startsWith('/intraday')
 
@@ -45,6 +47,9 @@ export function TopBar() {
           {[
             { to: '/rsi-ha', label: 'Screener' },
             { to: '/intraday', label: 'Intraday' },
+            // User management: the super admin and admins. The Master Trust login: the super admin only.
+            ...(user?.role === 'super_admin' || user?.role === 'admin' ? [{ to: '/users', label: 'Users' }] : []),
+            ...(user?.role === 'super_admin' ? [{ to: '/master-trust', label: 'Master Trust' }] : []),
           ].map(({ to, label }) => (
             <NavLink
               key={to}
@@ -105,6 +110,14 @@ export function TopBar() {
         </IconButton>
         <IconButton aria-label="Settings" onClick={() => useUiStore.getState().togglePanel('settings')}>
           <Settings className="h-4 w-4" />
+        </IconButton>
+        {user && (
+          <span className="hidden max-w-[12rem] shrink-0 truncate text-xs text-text-secondary xl:inline" title={user.role.replace('_', ' ')}>
+            {user.email ?? user.phone}
+          </span>
+        )}
+        <IconButton aria-label="Log out" title="Log out" onClick={() => useAuthStore.getState().logout()}>
+          <LogOut className="h-4 w-4" />
         </IconButton>
       </div>
     </header>

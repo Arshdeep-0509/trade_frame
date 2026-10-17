@@ -358,7 +358,7 @@ export function SignalsTable({ store }: SignalsTableProps) {
         </span>
       </div>
 
-      {errors.length > 0 && <ErrorsStrip count={errors.length} errors={errors} onRetry={() => void store.getState().runScanNow()} />}
+      {errors.length > 0 && <ErrorsStrip count={errors.length} errors={errors} onRetry={() => void retryScan(store)} />}
 
       {scanState === 'scanning' && (
         <div className="h-0.5 w-full bg-border" role="progressbar" aria-label="Scanning" aria-valuenow={scanProgress.done} aria-valuemin={0} aria-valuemax={scanProgress.total}>
@@ -720,6 +720,16 @@ function ZeroSignalsEmptyState({
       )}
     </div>
   )
+}
+
+/** Retry from the errors strip: reload the universe first if loading it is what failed. */
+async function retryScan(store: ScreenerStore): Promise<void> {
+  if (store.getState().universe.length === 0) {
+    store.setState({ errors: [] })
+    await store.getState().loadUniverse()
+    if (store.getState().scanState === 'error') return
+  }
+  await store.getState().runScanNow()
 }
 
 function ErrorsStrip({ count, errors, onRetry }: { count: number; errors: { symbol: string; message: string }[]; onRetry: () => void }) {
