@@ -6,11 +6,11 @@ import { register } from '../features/auth/authApi'
 import { useAuthStore } from '../features/auth/authStore'
 
 /**
- * /superadmin-register — one-time setup of the super admin, by phone number
+ * /developer-register — one-time setup of the developer, by phone number
  * (the backend refuses once one exists). There is no registration for admins
  * and users: their accounts are created on the User management page.
  */
-export function SuperAdminRegisterPage() {
+export function DeveloperRegisterPage() {
   const loggedIn = useAuthStore((s) => s.session !== null && s.isLoggedIn())
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
@@ -46,7 +46,7 @@ export function SuperAdminRegisterPage() {
 
   return (
     <AuthCard
-      title="Register super admin"
+      title="Register developer"
       submitLabel="Register"
       busy={busy}
       error={error}
@@ -54,7 +54,7 @@ export function SuperAdminRegisterPage() {
       footer={
         <>
           Already registered?{' '}
-          <Link to="/superadmin-login" className="font-medium text-neutral hover:underline">
+          <Link to="/developer-login" className="font-medium text-neutral hover:underline">
             Log in
           </Link>
         </>

@@ -9,6 +9,7 @@ import { Badge } from '../components/ui/Badge'
 import { IconButton } from '../components/ui/IconButton'
 import { useScreenerStore } from './screenerStore'
 import { useUiStore } from '../store/uiStore'
+import { DEVELOPER_ROLE, ROLE_LABEL } from '../features/auth/authApi'
 import { useAuthStore } from '../features/auth/authStore'
 
 const sessionVariant: Record<MarketSession, 'bullish' | 'warning' | 'default'> = {
@@ -47,9 +48,9 @@ export function TopBar() {
           {[
             { to: '/rsi-ha', label: 'Screener' },
             { to: '/intraday', label: 'Intraday' },
-            // User management: the super admin and admins. The Master Trust login: the super admin only.
-            ...(user?.role === 'super_admin' || user?.role === 'admin' ? [{ to: '/users', label: 'Users' }] : []),
-            ...(user?.role === 'super_admin' ? [{ to: '/master-trust', label: 'Master Trust' }] : []),
+            // User management: the developer and admins. The Master Trust login: the developer only.
+            ...(user?.role === DEVELOPER_ROLE || user?.role === 'admin' ? [{ to: '/users', label: 'Users' }] : []),
+            ...(user?.role === DEVELOPER_ROLE ? [{ to: '/master-trust', label: 'Master Trust' }] : []),
           ].map(({ to, label }) => (
             <NavLink
               key={to}
@@ -112,7 +113,7 @@ export function TopBar() {
           <Settings className="h-4 w-4" />
         </IconButton>
         {user && (
-          <span className="hidden max-w-[12rem] shrink-0 truncate text-xs text-text-secondary xl:inline" title={user.role.replace('_', ' ')}>
+          <span className="hidden max-w-[12rem] shrink-0 truncate text-xs text-text-secondary xl:inline" title={ROLE_LABEL[user.role]}>
             {user.email ?? user.phone}
           </span>
         )}

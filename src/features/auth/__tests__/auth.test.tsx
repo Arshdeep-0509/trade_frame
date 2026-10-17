@@ -2,8 +2,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, Navigate, RouterProvider } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LoginPage, SuperAdminLoginPage } from '../../../pages/LoginPage'
-import { SuperAdminRegisterPage } from '../../../pages/RegisterPage'
+import { LoginPage, DeveloperLoginPage } from '../../../pages/LoginPage'
+import { DeveloperRegisterPage } from '../../../pages/RegisterPage'
 import type { AuthSession } from '../authApi'
 import { authFetch } from '../authFetch'
 import { useAuthStore } from '../authStore'
@@ -22,8 +22,8 @@ function renderAt(path: string) {
     [
       { path: '/login', element: <LoginPage /> },
       { path: '/register', element: <Navigate to="/login" replace /> },
-      { path: '/superadmin-login', element: <SuperAdminLoginPage /> },
-      { path: '/superadmin-register', element: <SuperAdminRegisterPage /> },
+      { path: '/developer-login', element: <DeveloperLoginPage /> },
+      { path: '/developer-register', element: <DeveloperRegisterPage /> },
       {
         path: '/rsi-ha',
         element: (
@@ -72,12 +72,12 @@ describe('RequireAuth', () => {
     expect(screen.getByText('screener')).toBeInTheDocument()
   })
 
-  it('sends a super admin who logs out back to /superadmin-login', async () => {
+  it('sends a developer who logs out back to /developer-login', async () => {
     useAuthStore.getState().setSession(session({ user: { id: 9, role: 'super_admin', email: null, phone: '+919876543210', canCreateAdmins: true } }))
     const router = renderAt('/rsi-ha')
     useAuthStore.getState().logout()
-    expect(await screen.findByRole('heading', { name: 'Super admin log in' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/superadmin-login')
+    expect(await screen.findByRole('heading', { name: 'Developer log in' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/developer-login')
   })
 
   it('treats an expired session as logged out', async () => {
@@ -104,16 +104,16 @@ describe('LoginPage', () => {
     expect(JSON.parse(localStorage.getItem('rsi-ha:auth-session') ?? 'null')).toMatchObject({ data: { accessToken: 'token-123' } })
   })
 
-  it('offers email only — no phone or super admin option', () => {
+  it('offers email only — no phone or developer option', () => {
     renderAt('/login')
     expect(screen.getByLabelText('Email')).toBeInTheDocument()
     expect(screen.queryByLabelText('Phone number')).not.toBeInTheDocument()
-    expect(screen.queryByText(/super admin/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/developer/i)).not.toBeInTheDocument()
   })
 
-  it('/superadmin-login logs the super admin in by phone number', async () => {
+  it('/developer-login logs the developer in by phone number', async () => {
     const fetchMock = mockFetch(200, session())
-    renderAt('/superadmin-login')
+    renderAt('/developer-login')
     const user = userEvent.setup()
 
     expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
@@ -169,9 +169,9 @@ describe('registration', () => {
     expect(screen.queryByRole('link', { name: 'Register' })).not.toBeInTheDocument()
   })
 
-  it('/superadmin-register registers the super admin by phone number', async () => {
+  it('/developer-register registers the developer by phone number', async () => {
     const fetchMock = mockFetch(201, session())
-    renderAt('/superadmin-register')
+    renderAt('/developer-register')
     const user = userEvent.setup()
 
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
@@ -188,7 +188,7 @@ describe('registration', () => {
 
   it('catches mismatched and short passwords before calling the server', async () => {
     const fetchMock = mockFetch(201, session())
-    renderAt('/superadmin-register')
+    renderAt('/developer-register')
     const user = userEvent.setup()
 
     await user.type(screen.getByLabelText('Phone number'), '+919876543210')
@@ -205,7 +205,7 @@ describe('registration', () => {
 
   it("shows FastAPI's validation message, not the raw error list", async () => {
     mockFetch(422, { detail: [{ type: 'value_error', loc: ['body', 'phone'], msg: 'Value error, Enter a valid phone number.' }] })
-    renderAt('/superadmin-register')
+    renderAt('/developer-register')
     const user = userEvent.setup()
 
     await user.type(screen.getByLabelText('Phone number'), '12')

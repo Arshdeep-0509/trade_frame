@@ -5,6 +5,7 @@ import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useScreenerStore } from '../app/screenerStore'
+import { DEVELOPER_ROLE } from '../features/auth/authApi'
 import { useAuthStore } from '../features/auth/authStore'
 import {
   connectMasterTrust,
@@ -14,9 +15,9 @@ import {
 } from '../features/mastertrust/masterTrustApi'
 import { formatISTTime } from '../lib/formatters'
 
-/** /master-trust — the super admin (re)connects the Master Trust account every page's market data comes from. */
+/** /master-trust — the developer (re)connects the Master Trust account every page's market data comes from. */
 export function MasterTrustPage() {
-  const isSuperAdmin = useAuthStore((s) => s.session?.user.role === 'super_admin')
+  const isDeveloper = useAuthStore((s) => s.session?.user.role === DEVELOPER_ROLE)
   const [status, setStatus] = useState<MasterTrustStatus | null>(null)
   const [checking, setChecking] = useState(false)
   const [loginUrl, setLoginUrl] = useState<{ url: string; redirectUri: string } | null>(null)
@@ -37,10 +38,10 @@ export function MasterTrustPage() {
   }
 
   useEffect(() => {
-    if (isSuperAdmin) void refreshStatus()
-  }, [isSuperAdmin])
+    if (isDeveloper) void refreshStatus()
+  }, [isDeveloper])
 
-  if (!isSuperAdmin) return <Navigate to="/rsi-ha" replace />
+  if (!isDeveloper) return <Navigate to="/rsi-ha" replace />
 
   async function openLogin() {
     setError(null)

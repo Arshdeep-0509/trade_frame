@@ -7,6 +7,7 @@ import { Input } from '../components/ui/Input'
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from '../components/ui/Table'
 import { Toggle } from '../components/ui/Toggle'
 import { Field, Segmented } from '../features/auth/AuthCard'
+import { DEVELOPER_ROLE } from '../features/auth/authApi'
 import { useAuthStore } from '../features/auth/authStore'
 import {
   createUser,
@@ -34,14 +35,14 @@ interface Credentials {
 }
 
 /**
- * /users — the super admin manages every admin and user; an admin manages the
+ * /users — the developer manages every admin and user; an admin manages the
  * accounts they created. People get in with the credentials sent to them
  * from here (there is no self-registration). Users don't have this page.
  */
 export function UserManagementPage() {
   const me = useAuthStore((s) => s.session?.user ?? null)
-  const isSuperAdmin = me?.role === 'super_admin'
-  const isManager = isSuperAdmin || me?.role === 'admin'
+  const isDeveloper = me?.role === DEVELOPER_ROLE
+  const isManager = isDeveloper || me?.role === 'admin'
 
   const [users, setUsers] = useState<ManagedUser[] | null>(null)
   const [canCreateAdmins, setCanCreateAdminsHere] = useState(false)
@@ -139,7 +140,7 @@ export function UserManagementPage() {
       <div>
         <h1 className="text-lg font-semibold text-text-primary">User management</h1>
         <p className="text-sm text-text-secondary">
-          {isSuperAdmin ? 'Every admin and user.' : 'The accounts you created.'} New accounts log in at the login page with the details you send them.
+          {isDeveloper ? 'Every admin and user.' : 'The accounts you created.'} New accounts log in at the login page with the details you send them.
         </p>
       </div>
 
@@ -158,7 +159,7 @@ export function UserManagementPage() {
             />
           </div>
         ) : (
-          <p className="text-xs text-text-muted">You can create users. Creating admins needs the super admin's permission.</p>
+          <p className="text-xs text-text-muted">You can create users. Creating admins needs the developer's permission.</p>
         )}
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Email">
@@ -209,8 +210,8 @@ export function UserManagementPage() {
               <tr className="h-9">
                 <TableHeaderCell>Email</TableHeaderCell>
                 <TableHeaderCell>Role</TableHeaderCell>
-                {isSuperAdmin && <TableHeaderCell>Created by</TableHeaderCell>}
-                {isSuperAdmin && <TableHeaderCell>Can create admins</TableHeaderCell>}
+                {isDeveloper && <TableHeaderCell>Created by</TableHeaderCell>}
+                {isDeveloper && <TableHeaderCell>Can create admins</TableHeaderCell>}
                 <TableHeaderCell>Created</TableHeaderCell>
                 <TableHeaderCell className="text-right">Actions</TableHeaderCell>
               </tr>
@@ -224,8 +225,8 @@ export function UserManagementPage() {
                   <TableCell>
                     <Badge variant={user.role === 'admin' ? 'neutral' : 'default'}>{ROLE_LABEL[user.role]}</Badge>
                   </TableCell>
-                  {isSuperAdmin && <TableCell className="text-text-secondary">{user.createdBy ?? '—'}</TableCell>}
-                  {isSuperAdmin && (
+                  {isDeveloper && <TableCell className="text-text-secondary">{user.createdBy ?? '—'}</TableCell>}
+                  {isDeveloper && (
                     <TableCell>
                       {user.role === 'admin' ? (
                         <Toggle

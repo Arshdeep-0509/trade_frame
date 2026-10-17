@@ -1,4 +1,4 @@
-/** Client for mastertrust_intraday_api.py's /api/users/* (backend users.py) — the super admin and admins. */
+/** Client for mastertrust_intraday_api.py's /api/users/* (backend users.py) — the developer and admins. */
 import { apiRequest } from '../auth/authFetch'
 
 export type ManagedRole = 'admin' | 'user'
@@ -7,18 +7,18 @@ export interface ManagedUser {
   id: number
   role: ManagedRole
   email: string
-  /** Admins only: may this admin create admins (granted by the super admin). */
+  /** Admins only: may this admin create admins (granted by the developer). */
   canCreateAdmins: boolean
   /** ISO timestamp. */
   createdAt: string
-  /** The creator's email (or the super admin's phone); null once the creator is deleted. */
+  /** The creator's email (or the developer's phone); null once the creator is deleted. */
   createdBy: string | null
 }
 
 export interface UserList {
   /** Whether the person asking may create admins. */
   canCreateAdmins: boolean
-  /** The accounts they manage: everyone for the super admin, their own for an admin. */
+  /** The accounts they manage: everyone for the developer, their own for an admin. */
   users: ManagedUser[]
 }
 

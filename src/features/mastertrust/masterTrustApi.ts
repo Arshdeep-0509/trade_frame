@@ -1,4 +1,4 @@
-/** Client for mastertrust_intraday_api.py's /api/mastertrust/* (backend mastertrust_login.py) — super admin only. */
+/** Client for mastertrust_intraday_api.py's /api/mastertrust/* (backend mastertrust_login.py) — developer only. */
 import { apiRequest } from '../auth/authFetch'
 
 export interface MasterTrustStatus {

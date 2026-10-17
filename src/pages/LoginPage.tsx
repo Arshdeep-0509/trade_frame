@@ -7,7 +7,7 @@ import { useAuthStore } from '../features/auth/authStore'
 
 type By = 'email' | 'phone'
 
-/** The login form both pages share: admins and users log in by email, the super admin by phone number. */
+/** The login form both pages share: admins and users log in by email, the developer by phone number. */
 function LoginForm({ by, title, footer }: { by: By; title: string; footer: ReactNode }) {
   const from = (useLocation().state as { from?: string } | null)?.from ?? '/rsi-ha'
   const loggedIn = useAuthStore((s) => s.session !== null && s.isLoggedIn())
@@ -66,17 +66,17 @@ export function LoginPage() {
   return <LoginForm by="email" title="Log in" footer="No account? Ask your admin for your login details." />
 }
 
-/** /superadmin-login — the super admin, by phone number. */
-export function SuperAdminLoginPage() {
+/** /developer-login — the developer, by phone number. */
+export function DeveloperLoginPage() {
   return (
     <LoginForm
       by="phone"
-      title="Super admin log in"
+      title="Developer log in"
       footer={
         <>
           First-time setup?{' '}
-          <Link to="/superadmin-register" className="font-medium text-neutral hover:underline">
-            Register super admin
+          <Link to="/developer-register" className="font-medium text-neutral hover:underline">
+            Register developer
           </Link>
         </>
       }

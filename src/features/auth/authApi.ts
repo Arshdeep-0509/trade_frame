@@ -2,12 +2,21 @@
 
 export type Role = 'super_admin' | 'admin' | 'user'
 
+/**
+ * The developer's role as the backend stores and sends it. The value keeps the
+ * role's earlier name ("super admin") so existing accounts and sessions keep working.
+ */
+export const DEVELOPER_ROLE = 'super_admin' satisfies Role
+
+/** How each role is named on screen. */
+export const ROLE_LABEL: Record<Role, string> = { super_admin: 'Developer', admin: 'Admin', user: 'User' }
+
 export interface AuthUser {
   id: number
   role: Role
   email: string | null
   phone: string | null
-  /** Always true for the super admin; for an admin, granted by the super admin. */
+  /** Always true for the developer; for an admin, granted by the developer. */
   canCreateAdmins: boolean
 }
 
@@ -19,7 +28,7 @@ export interface AuthSession {
   user: AuthUser
 }
 
-/** Super admin setup only — admins and users are created on the User management page. */
+/** Developer setup only — admins and users are created on the User management page. */
 export type RegisterBody = { phone: string; password: string }
 
 export type LoginBody = { phone: string; password: string } | { email: string; password: string }

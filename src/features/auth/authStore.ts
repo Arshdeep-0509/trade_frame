@@ -16,7 +16,7 @@ function loadSession(): AuthSession | null {
 
 interface AuthState {
   session: AuthSession | null
-  /** Set on logout, so RequireAuth can send a logged-out super admin back to /superadmin-login. */
+  /** Set on logout, so RequireAuth can send a logged-out developer back to /developer-login. */
   loggedOutRole: Role | null
   setSession: (session: AuthSession) => void
   logout: () => void

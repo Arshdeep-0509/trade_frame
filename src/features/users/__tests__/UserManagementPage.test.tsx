@@ -7,7 +7,7 @@ import type { AuthUser } from '../../auth/authApi'
 import { useAuthStore } from '../../auth/authStore'
 import type { ManagedUser, UserList } from '../usersApi'
 
-const SUPER_ADMIN: AuthUser = { id: 1, role: 'super_admin', email: null, phone: '+919876543210', canCreateAdmins: true }
+const DEVELOPER: AuthUser = { id: 1, role: 'super_admin', email: null, phone: '+919876543210', canCreateAdmins: true }
 const ADMIN: AuthUser = { id: 2, role: 'admin', email: 'admin1@x.co', phone: null, canCreateAdmins: false }
 
 function logIn(user: AuthUser) {
@@ -115,7 +115,7 @@ describe('UserManagementPage', () => {
     renderPage()
     expect(await screen.findByText('No accounts yet. Create one above.')).toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: 'Admin' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Creating admins needs the super admin's permission/)).toBeInTheDocument()
+    expect(screen.getByText(/Creating admins needs the developer's permission/)).toBeInTheDocument()
 
     const user = userEvent.setup()
     await user.type(screen.getByLabelText('Email'), 'new.user@x.co')
@@ -128,7 +128,7 @@ describe('UserManagementPage', () => {
     expect(card).toHaveTextContent('Password: secret123')
     expect(backend.calls.find((c) => c.method === 'POST')?.body).toEqual({ role: 'user', email: 'new.user@x.co', password: 'secret123' })
     expect(within(screen.getByRole('table', { name: 'Accounts' })).getByText('new.user@x.co')).toBeInTheDocument()
-    // Admins don't see the super admin's columns.
+    // Admins don't see the developer's columns.
     expect(screen.queryByRole('columnheader', { name: 'Created by' })).not.toBeInTheDocument()
   })
 
@@ -148,8 +148,8 @@ describe('UserManagementPage', () => {
     expect(sent.password).toMatch(/^[A-Za-z0-9]{12}$/)
   })
 
-  it('the super admin sees who created each account and grants "can create admins"', async () => {
-    logIn(SUPER_ADMIN)
+  it('the developer sees who created each account and grants "can create admins"', async () => {
+    logIn(DEVELOPER)
     const backend = fakeBackend({
       canCreateAdmins: true,
       users: [account({ id: 20, role: 'admin', email: 'admin1@x.co', createdBy: '+919876543210' }), account({ id: 21 })],
@@ -166,13 +166,13 @@ describe('UserManagementPage', () => {
   })
 
   it('puts the permission switch back if the server refuses', async () => {
-    logIn(SUPER_ADMIN)
+    logIn(DEVELOPER)
     const backend = fakeBackend({ canCreateAdmins: true, users: [account({ id: 22, role: 'admin', email: 'admin1@x.co' })] })
     renderPage()
     const toggle = await screen.findByRole('switch', { name: 'admin1@x.co can create admins' })
-    backend.failNextWith(json(403, { detail: 'Only the super admin can change permissions.' }))
+    backend.failNextWith(json(403, { detail: 'Only the developer can change permissions.' }))
     await userEvent.setup().click(toggle)
-    expect(await screen.findByRole('alert')).toHaveTextContent('Only the super admin can change permissions.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Only the developer can change permissions.')
     expect(screen.getByRole('switch', { name: 'admin1@x.co can create admins' })).toHaveAttribute('aria-checked', 'false')
   })
 

@@ -6,7 +6,7 @@ import { MasterTrustPage } from '../../../pages/MasterTrustPage'
 import type { AuthUser } from '../../auth/authApi'
 import { useAuthStore } from '../../auth/authStore'
 
-const SUPER_ADMIN: AuthUser = { id: 1, role: 'super_admin', email: null, phone: '+919876543210', canCreateAdmins: true }
+const DEVELOPER: AuthUser = { id: 1, role: 'super_admin', email: null, phone: '+919876543210', canCreateAdmins: true }
 
 function logIn(user: AuthUser) {
   useAuthStore.getState().setSession({ accessToken: 'tok', tokenType: 'bearer', expiresAt: Date.now() + 60_000, user })
@@ -47,7 +47,7 @@ afterEach(() => {
 })
 
 describe('MasterTrustPage', () => {
-  it('is for the super admin only — anyone else is sent to the screener', async () => {
+  it('is for the developer only — anyone else is sent to the screener', async () => {
     logIn({ id: 2, role: 'admin', email: 'a@b.co', phone: null, canCreateAdmins: false })
     const fetchMock = mockApi({})
     const router = renderPage()
@@ -57,7 +57,7 @@ describe('MasterTrustPage', () => {
   })
 
   it('shows when the Master Trust login has expired', async () => {
-    logIn(SUPER_ADMIN)
+    logIn(DEVELOPER)
     mockApi({
       '/api/mastertrust/status': () =>
         json(200, { connected: true, savedAt: '2026-10-16T03:30:00Z', valid: false, detail: 'Master Trust returned HTTP 401 - log in again.' }),
@@ -67,8 +67,8 @@ describe('MasterTrustPage', () => {
     expect(screen.getByText('Master Trust returned HTTP 401 - log in again.')).toBeInTheDocument()
   })
 
-  it('connects with the pasted address, sending the super admin token', async () => {
-    logIn(SUPER_ADMIN)
+  it('connects with the pasted address, sending the developer token', async () => {
+    logIn(DEVELOPER)
     const fetchMock = mockApi({
       '/api/mastertrust/status': () => json(200, { connected: false, savedAt: null, valid: null, detail: 'Not connected yet.' }),
       '/api/mastertrust/connect': () => json(200, { connected: true, savedAt: '2026-10-16T03:30:00Z', valid: true }),
@@ -88,7 +88,7 @@ describe('MasterTrustPage', () => {
   })
 
   it("shows Master Trust's refusal", async () => {
-    logIn(SUPER_ADMIN)
+    logIn(DEVELOPER)
     mockApi({
       '/api/mastertrust/status': () => json(200, { connected: false, savedAt: null, valid: null }),
       '/api/mastertrust/connect': () => json(502, { detail: 'Master Trust refused the code (codes work once and expire quickly - log in again): invalid_grant' }),
@@ -101,7 +101,7 @@ describe('MasterTrustPage', () => {
   })
 
   it('asks for the address before calling the server', async () => {
-    logIn(SUPER_ADMIN)
+    logIn(DEVELOPER)
     const fetchMock = mockApi({ '/api/mastertrust/status': () => json(200, { connected: false, savedAt: null, valid: null }) })
     renderPage()
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Connect' }))
