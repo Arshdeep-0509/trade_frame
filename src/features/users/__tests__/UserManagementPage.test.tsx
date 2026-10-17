@@ -176,6 +176,30 @@ describe('UserManagementPage', () => {
     expect(screen.getByRole('switch', { name: 'admin1@x.co can create admins' })).toHaveAttribute('aria-checked', 'false')
   })
 
+  it('on a phone, shows one card per account with every action reachable', async () => {
+    // Narrow screen: the (min-width: 768px) query that picks the table doesn't match.
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({ matches: !query.includes('min-width: 768px'), media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false }) as MediaQueryList,
+    )
+    logIn(DEVELOPER)
+    const backend = fakeBackend({ canCreateAdmins: true, users: [account({ id: 50, role: 'admin', email: 'admin1@x.co', createdBy: '+919876543210' }), account({ id: 51 })] })
+    renderPage()
+
+    const list = await screen.findByRole('list', { name: 'Accounts' })
+    expect(screen.queryByRole('table', { name: 'Accounts' })).not.toBeInTheDocument()
+    const cards = within(list).getAllByRole('listitem')
+    expect(cards).toHaveLength(2)
+    expect(cards[0]).toHaveTextContent('admin1@x.co')
+    expect(cards[0]).toHaveTextContent('Created by +919876543210')
+    expect(within(cards[0]).getByRole('button', { name: 'Reset password for admin1@x.co' })).toHaveTextContent('Reset password')
+    expect(within(cards[1]).getByRole('button', { name: 'Delete u1@x.co' })).toHaveTextContent('Delete')
+    // The permission switch is on admin cards only.
+    expect(within(cards[1]).queryByRole('switch')).toBeNull()
+    await userEvent.setup().click(within(cards[0]).getByRole('switch', { name: 'admin1@x.co can create admins' }))
+    expect(backend.calls.find((c) => c.method === 'PATCH')?.path).toBe('/api/users/50')
+  })
+
   it('resets a password and shows the new one to send', async () => {
     logIn(ADMIN)
     vi.spyOn(window, 'confirm').mockReturnValue(true)

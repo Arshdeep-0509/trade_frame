@@ -19,8 +19,9 @@ export function MobileNavChips() {
       aria-label="Sections"
       className="flex shrink-0 gap-2 overflow-x-auto border-b border-border bg-panel px-4 py-2 sm:hidden"
     >
-      {railItems.map(({ icon: Icon, label, panel }, index) => {
-        const active = (index === 0 && !openPanel) || openPanel === panel
+      {/* Panels only: the rail's "Screener" entry opens no panel, and MobilePageTabs (just above) already covers page navigation. */}
+      {railItems.filter((item) => item.panel !== null).map(({ icon: Icon, label, panel }) => {
+        const active = openPanel === panel
         return (
           <button
             key={label}

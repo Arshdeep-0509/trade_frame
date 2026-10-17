@@ -6,6 +6,7 @@ import { ToastStack } from '../features/rsi-ha/ToastStack'
 import { useUiStore } from '../store/uiStore'
 import { FirstRunTour } from './FirstRunTour'
 import { MobileNavChips } from './MobileNavChips'
+import { MobilePageTabs } from './MobilePageTabs'
 import { ShortcutsOverlay } from './ShortcutsOverlay'
 import { useGlobalShortcuts } from './useGlobalShortcuts'
 import { useScreenerStore } from './screenerStore'
@@ -15,8 +16,8 @@ import { StatusBar } from './StatusBar'
 
 export function AppShell() {
   const theme = useUiStore((s) => s.theme)
-  // The screener's status bar and scan readout describe /rsi-ha only, not /intraday.
-  const onIntradayPage = useLocation().pathname.startsWith('/intraday')
+  // The screener's status bar and scan readout describe /rsi-ha only — not /intraday, /users or /master-trust.
+  const onScreenerPage = useLocation().pathname.startsWith('/rsi-ha')
 
   useEffect(() => {
     useScreenerStore.getState().start()
@@ -36,7 +37,9 @@ export function AppShell() {
     // way dvh does.
     <div className="flex h-dvh min-w-0 flex-col overflow-hidden bg-surface">
       <TopBar />
-      <MobileNavChips />
+      <MobilePageTabs />
+      {/* The panel chips (Watchlists, Parameters, Alerts, History) belong to the screener: on a phone they'd only crowd the other pages. */}
+      {onScreenerPage && <MobileNavChips />}
       <div className="flex min-h-0 flex-1">
         <LeftRail />
         <main className="min-w-0 flex-1 overflow-y-auto">
@@ -45,11 +48,11 @@ export function AppShell() {
           </PanelErrorBoundary>
         </main>
       </div>
-      {!onIntradayPage && <StatusBar />}
+      {onScreenerPage && <StatusBar />}
       <footer role="contentinfo" className="border-t border-border bg-surface px-4 py-1 text-center text-[10px] text-text-muted">
         Market data from Master Trust via mastertrust_intraday_api.py. Not investment advice.
       </footer>
-      {!onIntradayPage && <ScanPerfReadout store={useScreenerStore} />}
+      {onScreenerPage && <ScanPerfReadout store={useScreenerStore} />}
       <ToastStack />
       <ShortcutsOverlay />
       <FirstRunTour />

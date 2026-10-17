@@ -9,8 +9,9 @@ import { Badge } from '../components/ui/Badge'
 import { IconButton } from '../components/ui/IconButton'
 import { useScreenerStore } from './screenerStore'
 import { useUiStore } from '../store/uiStore'
-import { DEVELOPER_ROLE, ROLE_LABEL } from '../features/auth/authApi'
+import { ROLE_LABEL } from '../features/auth/authApi'
 import { useAuthStore } from '../features/auth/authStore'
+import { usePageLinks } from './pageLinks'
 
 const sessionVariant: Record<MarketSession, 'bullish' | 'warning' | 'default'> = {
   OPEN: 'bullish',
@@ -23,6 +24,7 @@ export function TopBar() {
   const connectionState = useScreenerStore((s) => s.connectionState)
   const theme = useUiStore((s) => s.theme)
   const user = useAuthStore((s) => s.session?.user ?? null)
+  const pageLinks = usePageLinks()
   // /intraday shows its own Master Trust connection badge, so the screener's connection dot is hidden there.
   const onIntradayPage = useLocation().pathname.startsWith('/intraday')
 
@@ -44,14 +46,9 @@ export function TopBar() {
           {/* Wordmark drops to just the logo mark below lg. */}
           <span className="hidden text-sm font-semibold tracking-tight lg:inline">RSI-HA</span>
         </Link>
-        <nav aria-label="Pages" className="hidden shrink-0 items-center gap-1 sm:flex">
-          {[
-            { to: '/rsi-ha', label: 'Screener' },
-            { to: '/intraday', label: 'Intraday' },
-            // User management: the developer and admins. The Master Trust login: the developer only.
-            ...(user?.role === DEVELOPER_ROLE || user?.role === 'admin' ? [{ to: '/users', label: 'Users' }] : []),
-            ...(user?.role === DEVELOPER_ROLE ? [{ to: '/master-trust', label: 'Master Trust' }] : []),
-          ].map(({ to, label }) => (
+        {/* Below md these links move to MobilePageTabs, a full-width row under this bar. */}
+        <nav aria-label="Pages" className="hidden shrink-0 items-center gap-1 md:flex">
+          {pageLinks.map(({ to, label }) => (
             <NavLink
               key={to}
               to={to}

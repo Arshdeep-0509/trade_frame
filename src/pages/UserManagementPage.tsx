@@ -9,6 +9,7 @@ import { Toggle } from '../components/ui/Toggle'
 import { Field, Segmented } from '../features/auth/AuthCard'
 import { DEVELOPER_ROLE } from '../features/auth/authApi'
 import { useAuthStore } from '../features/auth/authStore'
+import { useMediaQuery } from '../lib/useMediaQuery'
 import {
   createUser,
   deleteUser,
@@ -43,6 +44,8 @@ export function UserManagementPage() {
   const me = useAuthStore((s) => s.session?.user ?? null)
   const isDeveloper = me?.role === DEVELOPER_ROLE
   const isManager = isDeveloper || me?.role === 'admin'
+  // The table needs ~700px for all its columns; narrower screens get one card per account.
+  const wide = useMediaQuery('(min-width: 768px)')
 
   const [users, setUsers] = useState<ManagedUser[] | null>(null)
   const [canCreateAdmins, setCanCreateAdminsHere] = useState(false)
@@ -161,7 +164,7 @@ export function UserManagementPage() {
         ) : (
           <p className="text-xs text-text-muted">You can create users. Creating admins needs the developer's permission.</p>
         )}
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="Email">
             <Input type="email" autoComplete="off" placeholder="person@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
           </Field>
@@ -204,6 +207,41 @@ export function UserManagementPage() {
           </p>
         ) : users.length === 0 ? (
           <p className="p-4 text-sm text-text-secondary">No accounts yet. Create one above.</p>
+        ) : !wide ? (
+          <ul aria-label="Accounts">
+            {users.map((user) => (
+              <li key={user.id} className="flex flex-col gap-2 border-b border-border-hairline px-4 py-3 last:border-b-0">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="min-w-0 break-all text-sm text-text-primary">{user.email}</span>
+                  <Badge variant={user.role === 'admin' ? 'neutral' : 'default'} className="shrink-0">
+                    {ROLE_LABEL[user.role]}
+                  </Badge>
+                </div>
+                <p className="text-xs text-text-secondary">
+                  {isDeveloper && <>Created by {user.createdBy ?? '—'} · </>}
+                  {new Date(user.createdAt).toLocaleDateString('en-IN')}
+                </p>
+                {isDeveloper && user.role === 'admin' && (
+                  <div className="flex items-center gap-1 text-sm text-text-secondary">
+                    <Toggle
+                      checked={user.canCreateAdmins}
+                      onChange={(next) => void togglePermission(user, next)}
+                      aria-label={`${user.email} can create admins`}
+                    />
+                    Can create admins
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button size="sm" className="flex-1 whitespace-nowrap" onClick={() => void reset(user)} aria-label={`Reset password for ${user.email}`}>
+                    <KeyRound className="h-3.5 w-3.5" /> Reset password
+                  </Button>
+                  <Button size="sm" className="flex-1 whitespace-nowrap" onClick={() => void remove(user)} aria-label={`Delete ${user.email}`}>
+                    <Trash2 className="h-3.5 w-3.5 text-bearish" /> Delete
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : (
           <Table aria-label="Accounts">
             <TableHead>
