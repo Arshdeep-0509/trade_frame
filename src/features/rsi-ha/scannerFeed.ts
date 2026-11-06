@@ -28,8 +28,8 @@ export interface ScannerFeedListener {
 }
 
 export interface ScannerFeed {
-  /** Connects, and keeps reconnecting until the returned function is called. */
-  connect: (listener: ScannerFeedListener) => () => void
+  /** Connects to one timeframe's scanner, and keeps reconnecting until the returned function is called. */
+  connect: (listener: ScannerFeedListener, candleInterval: string) => () => void
 }
 
 export interface ScannerFeedOptions {
@@ -93,13 +93,14 @@ export function createSseParser(onMessage: (event: string, data: string) => void
  * can't send the Authorization header every other request here uses.
  */
 export function createScannerFeed(options: ScannerFeedOptions): ScannerFeed {
-  const url = `${(options.baseUrl ?? '').replace(/\/$/, '')}/api/scanner/stream`
+  const streamUrl = `${(options.baseUrl ?? '').replace(/\/$/, '')}/api/scanner/stream`
   const minRetryMs = options.minRetryMs ?? MIN_RETRY_MS
   const maxRetryMs = options.maxRetryMs ?? MAX_RETRY_MS
   const silenceLimitMs = options.silenceLimitMs ?? SILENCE_LIMIT_MS
 
   return {
-    connect(listener) {
+    connect(listener, candleInterval) {
+      const url = `${streamUrl}?interval=${encodeURIComponent(candleInterval)}`
       let stopped = false
       let controller: AbortController | null = null
       let retryTimer: ReturnType<typeof setTimeout> | null = null

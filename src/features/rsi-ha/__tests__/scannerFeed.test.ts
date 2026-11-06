@@ -52,10 +52,10 @@ describe('createScannerFeed', () => {
     const stream = streamResponse()
     const { events, connection, listener } = recorder()
     const fetchImpl = vi.fn(async () => stream.response)
-    disconnects.push(createScannerFeed({ baseUrl: 'http://api/', fetchImpl: fetchImpl as unknown as typeof fetch }).connect(listener))
+    disconnects.push(createScannerFeed({ baseUrl: 'http://api/', fetchImpl: fetchImpl as unknown as typeof fetch }).connect(listener, '5minute'))
 
     await vi.waitFor(() => expect(connection).toContain('connected'))
-    expect(fetchImpl.mock.calls[0]).toEqual(expect.arrayContaining(['http://api/api/scanner/stream']))
+    expect(fetchImpl.mock.calls[0]).toEqual(expect.arrayContaining(['http://api/api/scanner/stream?interval=5minute']))
     stream.push('event: signal\ndata: {"rows":[{"symbol":"A","rsi":null}]}\n\n')
     await vi.waitFor(() => expect(events).toHaveLength(1))
     const event = events[0] as Extract<ScannerFeedEvent, { type: 'signal' }>
@@ -68,7 +68,7 @@ describe('createScannerFeed', () => {
     const second = streamResponse()
     const fetchImpl = vi.fn().mockResolvedValueOnce(first.response).mockResolvedValueOnce(second.response)
     const { connection, events, listener } = recorder()
-    disconnects.push(createScannerFeed({ fetchImpl, minRetryMs: 1 }).connect(listener))
+    disconnects.push(createScannerFeed({ fetchImpl, minRetryMs: 1 }).connect(listener, '5minute'))
 
     await vi.waitFor(() => expect(connection).toContain('connected'))
     first.close()
@@ -83,7 +83,7 @@ describe('createScannerFeed', () => {
     const stream = streamResponse()
     const fetchImpl = vi.fn().mockRejectedValueOnce(new Error('down')).mockResolvedValueOnce(new Response('', { status: 502 })).mockResolvedValueOnce(stream.response)
     const { connection, listener } = recorder()
-    disconnects.push(createScannerFeed({ fetchImpl, minRetryMs: 1 }).connect(listener))
+    disconnects.push(createScannerFeed({ fetchImpl, minRetryMs: 1 }).connect(listener, '5minute'))
     await vi.waitFor(() => expect(connection.at(-1)).toBe('connected'))
     expect(fetchImpl).toHaveBeenCalledTimes(3)
   })
@@ -98,7 +98,7 @@ describe('createScannerFeed', () => {
       return silent.response
     })
     const { connection, listener } = recorder()
-    disconnects.push(createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch, minRetryMs: 1, silenceLimitMs: 10 }).connect(listener))
+    disconnects.push(createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch, minRetryMs: 1, silenceLimitMs: 10 }).connect(listener, '5minute'))
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2))
     expect(connection).toContain('disconnected')
   })
@@ -109,7 +109,7 @@ describe('createScannerFeed', () => {
   ])('reports %s as unavailable and stops', async (_name, makeResponse) => {
     const fetchImpl = vi.fn(async () => makeResponse())
     const { onUnavailable, listener } = recorder()
-    disconnects.push(createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch, minRetryMs: 1 }).connect(listener))
+    disconnects.push(createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch, minRetryMs: 1 }).connect(listener, '5minute'))
     await vi.waitFor(() => expect(onUnavailable).toHaveBeenCalledTimes(1))
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(fetchImpl).toHaveBeenCalledTimes(1)
@@ -119,7 +119,7 @@ describe('createScannerFeed', () => {
     const stream = streamResponse()
     const fetchImpl = vi.fn().mockResolvedValueOnce(new Response('booting', { status: 503 })).mockResolvedValueOnce(stream.response)
     const { connection, onUnavailable, listener } = recorder()
-    disconnects.push(createScannerFeed({ fetchImpl, minRetryMs: 1 }).connect(listener))
+    disconnects.push(createScannerFeed({ fetchImpl, minRetryMs: 1 }).connect(listener, '5minute'))
     await vi.waitFor(() => expect(connection.at(-1)).toBe('connected'))
     expect(onUnavailable).not.toHaveBeenCalled()
   })
@@ -127,7 +127,7 @@ describe('createScannerFeed', () => {
   it('stops for good after a 401: authFetch has logged the user out', async () => {
     const fetchImpl = vi.fn(async () => new Response('', { status: 401 }))
     const { listener } = recorder()
-    disconnects.push(createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch, minRetryMs: 1 }).connect(listener))
+    disconnects.push(createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch, minRetryMs: 1 }).connect(listener, '5minute'))
     await new Promise((resolve) => setTimeout(resolve, 15))
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
@@ -139,7 +139,7 @@ describe('createScannerFeed', () => {
       return streamResponse().response
     })
     const { connection, listener } = recorder()
-    const stop = createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch, minRetryMs: 1 }).connect(listener)
+    const stop = createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch, minRetryMs: 1 }).connect(listener, '5minute')
     await vi.waitFor(() => expect(connection).toContain('connected'))
     stop()
     expect(signal?.aborted).toBe(true)

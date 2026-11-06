@@ -23,9 +23,11 @@ function scan(rows: ScannedRow[], extra: Partial<Extract<ScannerFeedEvent, { typ
 class FakeFeed implements ScannerFeed {
   listener: ScannerFeedListener | null = null
   connections = 0
+  intervals: string[] = []
 
-  connect(listener: ScannerFeedListener): () => void {
+  connect(listener: ScannerFeedListener, candleInterval: string): () => void {
     this.connections += 1
+    this.intervals.push(candleInterval)
     this.listener = listener
     listener.onConnection('connected')
     return () => {
@@ -193,6 +195,42 @@ describe('screenerStore on the live feed', () => {
     feed.emit(scan([], { snapshot: true }))
     await applied
     expect(runScan).not.toHaveBeenCalled()
+  })
+
+  it.each(['3minute', '15minute', '1day'])('%s stays on the feed, on that timeframe\'s scanner', async (candleInterval) => {
+    const { feed, runScan, dataSource, store: s } = await started()
+    const applied = s.getState().setParams({ ...DEFAULT_PARAMS, candleInterval })
+    await vi.waitFor(() => expect(feed.intervals).toEqual(['5minute', candleInterval]))
+    feed.emit(scan([row()], { snapshot: true }))
+    await applied
+    expect(runScan).not.toHaveBeenCalled()
+    expect(dataSource.subscribeTicks).not.toHaveBeenCalled()
+    expect(s.getState().rows).toHaveLength(1)
+  })
+
+  it('clears the old timeframe\'s rows straight away, not when the new ones arrive', async () => {
+    const { feed, store: s } = await started()
+    feed.emit(scan([row()], { snapshot: true }))
+    expect(s.getState().visibleRows).toHaveLength(1)
+    const applied = s.getState().setParams({ ...DEFAULT_PARAMS, candleInterval: '3minute' })
+    expect(s.getState().visibleRows).toHaveLength(0)
+    expect(s.getState().lastScanAt).toBeNull()
+    await vi.waitFor(() => expect(feed.connections).toBe(2))
+    feed.emit(scan([], { snapshot: true }))
+    await applied
+  })
+
+  it('a saved timeframe connects to its scanner on start', async () => {
+    localStorage.setItem('rsi-ha:params-override', JSON.stringify({ version: 1, data: { ...DEFAULT_PARAMS, candleInterval: '15minute' } }))
+    const { feed } = await started()
+    expect(feed.intervals).toEqual(['15minute'])
+  })
+
+  it('a custom strategy on another timeframe still scans in the browser', async () => {
+    const { feed, runScan, store: s } = await started()
+    await s.getState().setParams({ ...DEFAULT_PARAMS, candleInterval: '3minute', minPrice: 500 })
+    expect(feed.listener).toBeNull()
+    expect(runScan).toHaveBeenCalledTimes(1)
   })
 
   it('a watchlist scans in the browser', async () => {

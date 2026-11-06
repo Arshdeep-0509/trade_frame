@@ -6,7 +6,7 @@ import type { ScannedRow } from '../features/rsi-ha/scanner'
 import { scanWatchlist } from '../features/rsi-ha/scanner'
 import { fetchIntervalCandles } from '../features/rsi-ha/intervalCandles'
 import { runScanInWorker } from '../features/rsi-ha/scannerClient'
-import type { ScannerFeed, ScannerFeedEvent } from '../features/rsi-ha/scannerFeed'
+import type { ScannerFeed, ScannerFeedEvent, ScannerFeedListener } from '../features/rsi-ha/scannerFeed'
 import { DEFAULT_PARAMS, overriddenParamKeys, parseIntervalMinutes, type StrategyParams } from '../strategy/constants'
 import { selectVisibleRows } from '../strategy/signals'
 import { loadFnoAtmOptions, loadFnoFuturesUniverse, loadNseEquityUniverse, type AtmMap, type UniverseEntry } from '../strategy/universe'
@@ -49,8 +49,9 @@ export interface ScreenerStoreDeps {
   pollIntervalMs?: number
   /**
    * The server's live scanner. While the default strategy is running, signals
-   * and prices come from here and this store neither scans nor polls. Custom
-   * params and watchlists only exist in this browser, so those still scan here.
+   * and prices come from here, on any candle interval, and this store neither
+   * scans nor polls. Custom params and watchlists only exist in this browser, so
+   * those still scan here.
    */
   liveFeed?: ScannerFeed
 }
@@ -376,9 +377,16 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
       async setParams(newParams) {
         const dedupeKey = (r: Pick<ScreenerRow, 'symbol' | 'signal'>) => `${r.symbol}:${r.signal}`
         const before = new Set(get().visibleRows.map(dedupeKey))
+        const intervalChanged = newParams.candleInterval !== get().params.candleInterval
 
         set((draft) => {
           draft.params = newParams
+          // A timeframe the server has just started takes a moment: the old timeframe's rows must not pass for its.
+          if (intervalChanged && usesLiveFeed()) {
+            draft.rows = []
+            draft.visibleRows = []
+            draft.lastScanAt = null
+          }
           draft.paramsRecalculating = true
           draft.paramsDiff = null
         })
@@ -526,8 +534,8 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
   function usesLiveFeed(): boolean {
     const { universeMode, params } = store.getState()
     if (!deps.liveFeed || feedUnavailable || universeMode === 'watchlist') return false
-    // The server scans at every candle close, so the scan interval is the one param it doesn't need to match.
-    return overriddenParamKeys(params).every((key) => key === 'scanEverySeconds')
+    // The server has a scanner per candle interval, and scans at every close instead of on a timer.
+    return overriddenParamKeys(params).every((key) => key === 'candleInterval' || key === 'scanEverySeconds')
   }
 
   function detachFeed(): void {
@@ -547,7 +555,7 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
         clearTimeout(timeout)
         resolve()
       }
-      disconnectFeed = deps.liveFeed?.connect({
+      const listener: ScannerFeedListener = {
         onEvent: applyFeedEvent,
         onConnection: (state) => {
           feedConnection = state
@@ -558,7 +566,8 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
           subscribeToUniverseTicks()
           void store.getState().runScanNow()
         },
-      }) ?? null
+      }
+      disconnectFeed = deps.liveFeed?.connect(listener, store.getState().params.candleInterval) ?? null
     })
   }
 
