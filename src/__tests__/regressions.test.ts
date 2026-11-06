@@ -3,28 +3,19 @@ import type { MarketDataSource } from '../data/MarketDataSource'
 import { DEFAULT_SEED, generateUniverse, MockMarketDataSource } from '../data/mock'
 import { MAX_ATTEMPTS, MAX_SIGNALS, MIN_SIGNALS } from '../data/mock/generateUniverse'
 import { createIntradayStore, matchesFilters, type IntradayStore } from '../store/intradayStore'
-import { useAlertStore } from '../store/alertStore'
-import { createScreenerStore, type ScreenerStore } from '../store/screenerStore'
-import { runFullScan } from '../features/rsi-ha/scanner'
-import { BAR_SECONDS, makeMock, makeScreener, scanOnce, SESSION_NOW } from '../test-utils/realMock'
+import { makeMock, SESSION_NOW } from '../test-utils/realMock'
 import { DEFAULT_PARAMS } from '../strategy/constants'
 import type { Candle } from '../types/domain'
 
 /**
  * Layer 6: bugs this project has already shipped once. Each test is the
- * defect written down so it cannot come back. (Regression 1, the virtualizer
- * re-measure on a layout flip, needs real layout and lives in
- * e2e/regressions.spec.ts; jsdom measures every element at 0px.)
+ * defect written down so it cannot come back.
  */
 
-let screener: ScreenerStore | null = null
 let intraday: IntradayStore | null = null
 afterEach(() => {
-  screener?.getState().stop()
   intraday?.getState().stop()
-  screener = null
   intraday = null
-  useAlertStore.setState({ rules: [], notifications: [] })
   localStorage.clear()
 })
 
@@ -55,22 +46,6 @@ function countingSource(inner: MarketDataSource): { source: MarketDataSource; ac
 }
 
 describe('2. TICK SUBSCRIPTION MUST NOT STACK', () => {
-  it('screener: three universe loads + three scans leave exactly ONE live subscription, over exactly the universe', async () => {
-    const mock = makeMock()
-    const { source, active, last } = countingSource(mock)
-    screener = createScreenerStore({ dataSource: source, now: () => mock.getNow(), runScan: runFullScan, pollIntervalMs: 60 * 60 * 1000 })
-    for (let i = 0; i < 3; i++) {
-      await screener.getState().loadUniverse()
-      await screener.getState().runScanNow()
-    }
-    expect(active()).toBe(1)
-    // The screener ticks its whole universe (a bar close on ANY symbol can create a signal),
-    // so "only the current rows" means: nothing outside the current universe.
-    expect(new Set(last().tokens)).toEqual(new Set(screener.getState().universe.map((u) => u.token)))
-    screener.getState().stop()
-    expect(active()).toBe(0)
-  }, 60_000)
-
   it('intraday: init + three refreshes leave ONE live subscription whose priority is exactly the visible rows', async () => {
     const mock = makeMock()
     const { source, active, last } = countingSource(mock)
@@ -88,66 +63,6 @@ describe('2. TICK SUBSCRIPTION MUST NOT STACK', () => {
     expect(new Set(last().priority)).toEqual(new Set(visible))
     intraday.getState().stop()
     expect(active()).toBe(0)
-  }, 60_000)
-})
-
-describe('3. FIRST SCAN MUST NOT ANNOUNCE EVERYTHING', () => {
-  // A rule that matches every row with an RSI: if anything is announced, it alerts.
-  const catchAll = () => useAlertStore.setState({ rules: [{ id: 'all', type: 'rsi-threshold', direction: 'above', value: -1, enabled: true }], notifications: [] })
-
-  it('after the first scan: rows exist, but freshIds and alerts are empty', async () => {
-    catchAll()
-    const mock = makeMock()
-    screener = makeScreener(mock)
-    await scanOnce(screener)
-    expect(screener.getState().rows.length).toBeGreaterThan(0)
-    expect(screener.getState().freshIds).toEqual([])
-    expect(useAlertStore.getState().notifications).toEqual([])
-  }, 60_000)
-
-  it('a later scheduled scan that produces genuinely new rows announces exactly those rows, and alerts only for them', async () => {
-    catchAll()
-    const mock = makeMock()
-    screener = makeScreener(mock)
-    await scanOnce(screener)
-    const firstIds = new Set(screener.getState().rows.map((r) => r.id))
-
-    for (let k = 1; k <= 12 && screener.getState().freshIds.length === 0; k++) {
-      mock.setClockMode('fixed', SESSION_NOW + k * BAR_SECONDS)
-      await screener.getState().runScanNow()
-    }
-    const fresh = screener.getState().freshIds
-    expect(fresh.length).toBeGreaterThan(0)
-    for (const id of fresh) expect(firstIds.has(id)).toBe(false)
-    const alerted = new Set(useAlertStore.getState().notifications.map((n) => n.rowId))
-    const freshWithRsi = screener.getState().rows.filter((r) => fresh.includes(r.id) && !Number.isNaN(r.rsi)).map((r) => r.id)
-    expect(alerted).toEqual(new Set(freshWithRsi))
-  }, 120_000)
-
-  it('a parameter change announces nothing, even though the row set changes', async () => {
-    catchAll()
-    const mock = makeMock()
-    screener = makeScreener(mock)
-    await scanOnce(screener)
-    const before = screener.getState().rows.map((r) => r.id).join()
-    await screener.getState().setParams({ ...screener.getState().params, rsiBuyLow: 40, rsiBuyHigh: 90 })
-    expect(screener.getState().rows.map((r) => r.id).join()).not.toBe(before)
-    expect(screener.getState().freshIds).toEqual([])
-    expect(useAlertStore.getState().notifications).toEqual([])
-  }, 60_000)
-
-  it('a replay seek announces nothing, even though the row set changes', async () => {
-    catchAll()
-    const mock = makeMock()
-    screener = makeScreener(mock)
-    await scanOnce(screener)
-    const before = screener.getState().rows.map((r) => r.id).join()
-    // What ReplayTransportBar does on a seek: move the clock, then an immediate-replace rescan.
-    mock.setClockMode('fixed', SESSION_NOW - 20 * BAR_SECONDS)
-    await screener.getState().runScanNow({ immediateReplace: true })
-    expect(screener.getState().rows.map((r) => r.id).join()).not.toBe(before)
-    expect(screener.getState().freshIds).toEqual([])
-    expect(useAlertStore.getState().notifications).toEqual([])
   }, 60_000)
 })
 

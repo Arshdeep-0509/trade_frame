@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createScannerFeed, createSseParser, type ScannerFeedEvent, type ScannerFeedListener } from '../scannerFeed'
-import { signalCloseTime } from '../rowHelpers'
 
 const encoder = new TextEncoder()
 
@@ -22,9 +21,8 @@ function streamResponse() {
 function recorder() {
   const events: ScannerFeedEvent[] = []
   const connection: string[] = []
-  const onUnavailable = vi.fn()
-  const listener: ScannerFeedListener = { onEvent: (e) => events.push(e), onConnection: (s) => connection.push(s), onUnavailable }
-  return { events, connection, onUnavailable, listener }
+  const listener: ScannerFeedListener = { onEvent: (e) => events.push(e), onConnection: (s) => connection.push(s) }
+  return { events, connection, listener }
 }
 
 const disconnects: (() => void)[] = []
@@ -79,6 +77,15 @@ describe('createScannerFeed', () => {
     await vi.waitFor(() => expect(events).toHaveLength(1))
   })
 
+  it('asks for the timeframe it was given', async () => {
+    const stream = streamResponse()
+    const fetchImpl = vi.fn(async () => stream.response)
+    const { connection, listener } = recorder()
+    disconnects.push(createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch }).connect(listener, '15minute'))
+    await vi.waitFor(() => expect(connection).toContain('connected'))
+    expect(fetchImpl.mock.calls[0]).toEqual(expect.arrayContaining(['/api/scanner/stream?interval=15minute']))
+  })
+
   it('keeps retrying while the server is unreachable', async () => {
     const stream = streamResponse()
     const fetchImpl = vi.fn().mockRejectedValueOnce(new Error('down')).mockResolvedValueOnce(new Response('', { status: 502 })).mockResolvedValueOnce(stream.response)
@@ -103,27 +110,6 @@ describe('createScannerFeed', () => {
     expect(connection).toContain('disconnected')
   })
 
-  it.each([
-    ['an old backend without the route', () => new Response('', { status: 404 })],
-    ['the scanner switched off', () => new Response('{"detail":"switched off (SCANNER_ENABLED)."}', { status: 503 })],
-  ])('reports %s as unavailable and stops', async (_name, makeResponse) => {
-    const fetchImpl = vi.fn(async () => makeResponse())
-    const { onUnavailable, listener } = recorder()
-    disconnects.push(createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch, minRetryMs: 1 }).connect(listener, '5minute'))
-    await vi.waitFor(() => expect(onUnavailable).toHaveBeenCalledTimes(1))
-    await new Promise((resolve) => setTimeout(resolve, 10))
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
-  })
-
-  it('treats any other 503 (a server still starting) as temporary', async () => {
-    const stream = streamResponse()
-    const fetchImpl = vi.fn().mockResolvedValueOnce(new Response('booting', { status: 503 })).mockResolvedValueOnce(stream.response)
-    const { connection, onUnavailable, listener } = recorder()
-    disconnects.push(createScannerFeed({ fetchImpl, minRetryMs: 1 }).connect(listener, '5minute'))
-    await vi.waitFor(() => expect(connection.at(-1)).toBe('connected'))
-    expect(onUnavailable).not.toHaveBeenCalled()
-  })
-
   it('stops for good after a 401: authFetch has logged the user out', async () => {
     const fetchImpl = vi.fn(async () => new Response('', { status: 401 }))
     const { listener } = recorder()
@@ -145,19 +131,5 @@ describe('createScannerFeed', () => {
     expect(signal?.aborted).toBe(true)
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(fetchImpl).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('signalCloseTime', () => {
-  it('is the close of the candle, not its start: the 09:50 candle is a 09:55 signal', () => {
-    const start = Date.parse('2026-11-06T09:50:00+05:30') / 1000
-    const close = Date.parse('2026-11-06T09:55:00+05:30') / 1000
-    expect(signalCloseTime({ time: start }, '5minute')).toBe(close)
-    expect(signalCloseTime({ time: start, barCloseAt: close }, '5minute')).toBe(close)
-    expect(signalCloseTime({ time: start }, '15minute')).toBe(start + 900)
-  })
-
-  it('leaves a daily bar on its own date', () => {
-    expect(signalCloseTime({ time: 1000 }, '1day')).toBe(1000)
   })
 })

@@ -1,4 +1,3 @@
-import { createContext, useContext } from 'react'
 import type { Candle, Exchange, Instrument, MarketTick } from '../types/domain'
 import type { ScripRow, SearchResponse } from '../types/api'
 
@@ -78,23 +77,4 @@ export interface MarketDataSource {
    * that aggregation is allowed to live in.
    */
   fetchDailyBars(instrument: Pick<Instrument, 'token' | 'exchange'>, days: number): Promise<Candle[]>
-}
-
-const MarketDataContext = createContext<MarketDataSource | null>(null)
-
-export const MarketDataProvider = MarketDataContext.Provider
-
-/**
- * Reads whichever MarketDataSource implementation is currently provided
- * (mock, real, or a replay fixture). Throws if used outside a
- * MarketDataProvider rather than silently falling back to a default, since
- * a silent fallback is exactly the kind of guess STRATEGY-CONTRACT.md §3.2
- * says not to make.
- */
-export function useMarketData(): MarketDataSource {
-  const context = useContext(MarketDataContext)
-  if (!context) {
-    throw new Error('useMarketData() must be used within a MarketDataProvider')
-  }
-  return context
 }

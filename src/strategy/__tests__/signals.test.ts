@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalyzedCandle, Candle, SignalRow } from '../../types/domain'
 import { DEFAULT_PARAMS } from '../constants'
-import { checkBreakout, checkSignal, selectVisibleRows } from '../signals'
+import { checkBreakout, checkSignal } from '../signals'
 
 function makeAnalyzedCandle(overrides: Partial<AnalyzedCandle> = {}): AnalyzedCandle {
   return {
@@ -127,38 +127,5 @@ describe('checkSignal + checkBreakout composition', () => {
     }
 
     expect(rows).toHaveLength(2)
-  })
-})
-
-describe('selectVisibleRows', () => {
-  it('hides NSE rows but keeps the CE/PE rows derived from them', () => {
-    const nseBuy: SignalRow = { id: '1', symbol: 'RELIANCE-EQ', exchange: 'NSE', signal: 'BUY', price: 2500, rsi: 62, time: 0 }
-    const ceBuy: SignalRow = {
-      id: '2',
-      symbol: 'RELIANCE25JANCE2500',
-      exchange: 'NFO',
-      signal: 'CE Buy',
-      price: 42,
-      rsi: 62,
-      time: 0,
-      derivedFrom: 'RELIANCE-EQ',
-    }
-    const futuresBreakout: SignalRow = {
-      id: '3',
-      symbol: 'RELIANCE25JANFUT',
-      exchange: 'NFO',
-      signal: 'BREAKOUT-UP',
-      price: 2600,
-      rsi: 55,
-      time: 0,
-      level: 2590,
-    }
-
-    const visible = selectVisibleRows([nseBuy, ceBuy, futuresBreakout])
-
-    expect(visible).toContainEqual(ceBuy)
-    expect(visible).toContainEqual(futuresBreakout)
-    expect(visible).not.toContainEqual(nseBuy)
-    expect(visible).toHaveLength(2)
   })
 })

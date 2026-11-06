@@ -32,7 +32,7 @@ import type { ScripRow } from '../types/api'
 import type { Candle, Exchange, IndexKey, Instrument, IntradayRow, MarketTick } from '../types/domain'
 import { usePauseStore } from './pauseStore'
 import { useStarredStore } from './starredStore'
-import type { ScanError } from './types'
+import type { ScanError } from '../features/rsi-ha/scannerFeed'
 
 enableMapSet()
 

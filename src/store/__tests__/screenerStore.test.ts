@@ -1,62 +1,30 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { MarketDataSource, ConnectionState, IndexQuote, IndexQuoteKey } from '../../data/MarketDataSource'
-import type { ScripRow, SearchResponse } from '../../types/api'
-import type { Candle, Exchange, Instrument, MarketTick } from '../../types/domain'
+import { afterEach, describe, expect, it } from 'vitest'
+import type { ScannerFeed, ScannerFeedEvent, ScannerFeedListener, SignalRow } from '../../features/rsi-ha/scannerFeed'
 import { createScreenerStore, type ScreenerStore } from '../screenerStore'
-import buyCandlesFixture from '../../features/rsi-ha/__tests__/fixtures/buy-candles.json'
 
-const buyCandles = buyCandlesFixture as Candle[]
-
-function flatCandles(price: number): Candle[] {
-  return Array.from({ length: 20 }, (_, i) => ({ time: i * 300, open: price, high: price, low: price, close: price, volume: 1000 }))
+function row(overrides: Partial<SignalRow> = {}): SignalRow {
+  return { id: 'T1-BUY-100', symbol: 'ACME-EQ', exchange: 'NSE', signal: 'BUY', price: 2500, rsi: 62, time: 100, barCloseAt: 400, detectedAt: 402, token: 'T1', ...overrides }
 }
 
-const SCRIP_ROWS: ScripRow[] = [
-  { exchange: 'NSE', instrument_name: 'EQ', trading_symbol: 'BUYER-EQ', exchange_token: 'T1', close_price: '8800', expiry: '', company_name: 'BUYER', strike: '', option_type: '' },
-  { exchange: 'NSE', instrument_name: 'EQ', trading_symbol: 'FLAT-EQ', exchange_token: 'T2', close_price: '2500', expiry: '', company_name: 'FLAT', strike: '', option_type: '' },
-]
+function scan(rows: SignalRow[], extra: Partial<Extract<ScannerFeedEvent, { type: 'scan' }>> = {}): ScannerFeedEvent {
+  return { type: 'scan', rows, errors: [], scannedAt: 410.5, durationMs: 3000, universeSize: 255, nextScanAt: 702.2, ...extra }
+}
 
-class FakeDataSource implements MarketDataSource {
-  candlesByToken = new Map<string, Candle[]>([
-    ['T1', buyCandles],
-    ['T2', flatCandles(2500)],
-  ])
-  connectionState: ConnectionState = 'connected'
-  tickListener: ((tick: MarketTick) => void) | null = null
+class FakeFeed implements ScannerFeed {
+  listener: ScannerFeedListener | null = null
+  intervals: string[] = []
 
-  async searchSymbol(): Promise<SearchResponse> {
-    return { error: null, result: [] }
-  }
-
-  async fetchHistoricalCandles(token: string): Promise<Candle[]> {
-    return this.candlesByToken.get(token) ?? []
-  }
-
-  async loadScripMaster(): Promise<ScripRow[]> {
-    return SCRIP_ROWS
-  }
-
-  subscribeTicks(_tokens: string[], onTick: (tick: MarketTick) => void): () => void {
-    this.tickListener = onTick
+  connect(listener: ScannerFeedListener, candleInterval: string): () => void {
+    this.intervals.push(candleInterval)
+    this.listener = listener
+    listener.onConnection('connected')
     return () => {
-      this.tickListener = null
+      if (this.listener === listener) this.listener = null
     }
   }
 
-  getConnectionState(): ConnectionState {
-    return this.connectionState
-  }
-
-  async fetchIndexQuotes(keys: IndexQuoteKey[]): Promise<IndexQuote[]> {
-    return keys.map((key) => ({ key, label: key, last: 0, prevClose: 0, changePct: 0, time: 0 }))
-  }
-
-  async fetchDailyBars(_instrument: Pick<Instrument, 'token' | 'exchange'>, _days: number): Promise<Candle[]> {
-    return []
-  }
-
-  emitTick(token: string, ltp: number, time: number, exchange: Exchange = 'NSE'): void {
-    this.tickListener?.({ token, exchange, ltp, time })
+  emit(event: ScannerFeedEvent): void {
+    this.listener?.onEvent(event)
   }
 }
 
@@ -65,125 +33,114 @@ let store: ScreenerStore | null = null
 afterEach(() => {
   store?.getState().stop()
   store = null
-  vi.useRealTimers()
+  localStorage.clear()
 })
 
+function started() {
+  const feed = new FakeFeed()
+  store = createScreenerStore(feed)
+  store.getState().start()
+  return { feed, store }
+}
+
 describe('screenerStore', () => {
-  it('loads a universe and populates rows from a real (non-worker) scan', async () => {
-    const dataSource = new FakeDataSource()
-    let nowSec = 1767609600
-    store = createScreenerStore({
-      dataSource,
-      now: () => nowSec,
-      runScan: (universe, ds, atmMap, params, onProgress) =>
-        import('../../features/rsi-ha/scanner').then((m) => m.runFullScan(universe, ds, atmMap, params, onProgress)),
-    })
-
-    await store.getState().loadUniverse()
-    await store.getState().runScanNow()
-
-    const state = store.getState()
-    expect(state.scanState).toBe('done')
-    const buyRow = state.rows.find((r) => r.symbol === 'BUYER-EQ')
-    expect(buyRow).toBeDefined()
-    expect(buyRow?.signal).toBe('BUY')
-    expect(state.lastScanAt).toBe(nowSec)
-    expect(state.nextScanAt).toBe(nowSec + state.params.scanEverySeconds)
+  it('connects to the 5-minute scanner by default', () => {
+    const { feed, store: s } = started()
+    expect(feed.intervals).toEqual(['5minute'])
+    expect(s.getState().connectionState).toBe('connected')
   })
 
-  it('updates an existing row in place on a repeated scan instead of duplicating it', async () => {
-    const dataSource = new FakeDataSource()
-    const nowSec = 1767609600
-    store = createScreenerStore({
-      dataSource,
-      now: () => nowSec,
-      runScan: (universe, ds, atmMap, params, onProgress) =>
-        import('../../features/rsi-ha/scanner').then((m) => m.runFullScan(universe, ds, atmMap, params, onProgress)),
-    })
-
-    await store.getState().loadUniverse()
-    await store.getState().runScanNow()
-    const firstId = store.getState().rows.find((r) => r.symbol === 'BUYER-EQ')?.id
-
-    await store.getState().runScanNow()
-    const rowsForBuyer = store.getState().rows.filter((r) => r.symbol === 'BUYER-EQ' && r.signal === 'BUY')
-
-    expect(rowsForBuyer).toHaveLength(1)
-    expect(rowsForBuyer[0].id).toBe(firstId)
+  it('shows a signal the moment it arrives, before the scan has finished', () => {
+    const { feed, store: s } = started()
+    feed.emit({ type: 'signal', rows: [row()] })
+    expect(s.getState().rows.map((r) => r.symbol)).toEqual(['ACME-EQ'])
   })
 
-  it('a WS tick updates liveLtp but never touches rows (signals only evaluate on closed candles)', async () => {
-    const dataSource = new FakeDataSource()
-    store = createScreenerStore({ dataSource, now: () => 1767609600 })
-
-    await store.getState().loadUniverse()
-    const rowsBefore = store.getState().rows
-
-    dataSource.emitTick('T2', 9999, 1767609600)
-
-    expect(store.getState().liveLtp.get('T2')).toBe(9999)
-    expect(store.getState().rows).toBe(rowsBefore)
+  it('the finished scan replaces the list, without duplicates', () => {
+    const { feed, store: s } = started()
+    feed.emit({ type: 'signal', rows: [row()] })
+    feed.emit(scan([row()]))
+    expect(s.getState().rows).toHaveLength(1)
   })
 
-  it('re-evaluates a symbol only once its bar actually closes (a new bar-start bucket), not on every tick', async () => {
-    const dataSource = new FakeDataSource()
-    store = createScreenerStore({
-      dataSource,
-      now: () => 1767609900,
-      runScan: (universe, ds, atmMap, params, onProgress) =>
-        import('../../features/rsi-ha/scanner').then((m) => m.runFullScan(universe, ds, atmMap, params, onProgress)),
-    })
-
-    await store.getState().loadUniverse()
-
-    // Two ticks inside the SAME 5-minute bucket [1767609600, 1767609900) - no rescan expected.
-    dataSource.emitTick('T1', 8850, 1767609600)
-    await Promise.resolve()
-    dataSource.emitTick('T1', 8855, 1767609700)
-    await Promise.resolve()
-    expect(store.getState().rows.some((r) => r.symbol === 'BUYER-EQ')).toBe(false)
-
-    // This tick lands in the NEXT bucket -> the previous bar just "closed" -> triggers a single-symbol rescan.
-    dataSource.emitTick('T1', 8860, 1767609900)
-    await new Promise((resolve) => setTimeout(resolve, 20))
-
-    const buyRow = store.getState().rows.find((r) => r.symbol === 'BUYER-EQ')
-    expect(buyRow).toBeDefined()
-    expect(buyRow?.signal).toBe('BUY')
+  it('a repeated signal replaces its row', () => {
+    const { feed, store: s } = started()
+    feed.emit({ type: 'signal', rows: [row({ price: 2500 })] })
+    feed.emit({ type: 'signal', rows: [row({ price: 2510 })] })
+    expect(s.getState().rows.map((r) => r.price)).toEqual([2510])
   })
 
-  it('pausing suppresses tick-driven rescans but ticks still update liveLtp', async () => {
-    const dataSource = new FakeDataSource()
-    store = createScreenerStore({ dataSource, now: () => 1767609600 })
-
-    await store.getState().loadUniverse()
-    store.getState().togglePause()
-    expect(store.getState().isPaused).toBe(true)
-
-    dataSource.emitTick('T1', 12345, 1767609600)
-    await Promise.resolve()
-    dataSource.emitTick('T1', 12346, 1767609900)
-    await new Promise((resolve) => setTimeout(resolve, 20))
-
-    expect(store.getState().liveLtp.get('T1')).toBe(12346)
-    expect(store.getState().rows.some((r) => r.symbol === 'BUYER-EQ')).toBe(false)
+  it('lists the newest signals first', () => {
+    const { feed, store: s } = started()
+    feed.emit(scan([row({ id: 'old', barCloseAt: 100 }), row({ id: 'new', barCloseAt: 400 })]))
+    expect(s.getState().rows.map((r) => r.id)).toEqual(['new', 'old'])
   })
 
-  it('a failed universe load is recorded as an error (shown with Retry), not an unhandled rejection, and start() skips the scan', async () => {
-    const dataSource = new FakeDataSource()
-    const failingLoad = vi.spyOn(dataSource, 'loadScripMaster').mockRejectedValueOnce(new Error('/api/scrip-master failed (HTTP 401): Not logged in.'))
-    const runScan = vi.fn()
-    store = createScreenerStore({ dataSource, now: () => 1767609600, runScan })
+  it('records the scan and live prices', () => {
+    const { feed, store: s } = started()
+    feed.emit(scan([row()]))
+    feed.emit({ type: 'prices', prices: { T1: 2512.5 } })
+    const state = s.getState()
+    expect(state.lastScanAt).toBe(410)
+    expect(state.nextScanAt).toBe(702)
+    expect(state.universeSize).toBe(255)
+    expect(state.liveLtp.T1).toBe(2512.5)
+  })
 
+  it('shows progress while scanning', () => {
+    const { feed, store: s } = started()
+    feed.emit({ type: 'status', state: 'scanning', message: null, nextScanAt: null, progress: { done: 0, total: 255 } })
+    expect(s.getState().scanning).toBe(true)
+    feed.emit({ type: 'progress', done: 100, total: 255 })
+    expect(s.getState().scanProgress).toEqual({ done: 100, total: 255 })
+    feed.emit(scan([]))
+    expect(s.getState().scanning).toBe(false)
+  })
+
+  it('reports when Master Trust is not connected, and clears it when it is', () => {
+    const { feed, store: s } = started()
+    const status = { type: 'status', nextScanAt: null, progress: { done: 0, total: 0 } } as const
+    feed.emit({ ...status, state: 'waiting-for-token', message: 'Master Trust is not connected.' })
+    expect(s.getState().problem).toBe('Master Trust is not connected.')
+    feed.emit({ ...status, state: 'waiting', message: null })
+    expect(s.getState().problem).toBeNull()
+  })
+
+  it.each(['3minute', '15minute', '1day'])('switching to %s connects to that scanner', (interval) => {
+    const { feed, store: s } = started()
+    s.getState().setCandleInterval(interval)
+    expect(feed.intervals).toEqual(['5minute', interval])
+  })
+
+  it('clears the old timeframe straight away, not when the new rows arrive', () => {
+    const { feed, store: s } = started()
+    feed.emit(scan([row()]))
+    s.getState().setCandleInterval('3minute')
+    expect(s.getState().rows).toEqual([])
+    expect(s.getState().lastScanAt).toBeNull()
+  })
+
+  it('remembers the timeframe', () => {
+    const { store: s } = started()
+    s.getState().setCandleInterval('15minute')
+    s.getState().stop()
+
+    const feed = new FakeFeed()
+    store = createScreenerStore(feed)
     store.getState().start()
-    await vi.waitFor(() => expect(store?.getState().scanState).toBe('error'))
-    expect(store.getState().errors).toEqual([{ symbol: '*', message: '/api/scrip-master failed (HTTP 401): Not logged in.' }])
-    expect(runScan).not.toHaveBeenCalled()
+    expect(feed.intervals).toEqual(['15minute'])
+  })
 
-    // The next load (Retry) succeeds normally.
-    await store.getState().loadUniverse()
-    expect(failingLoad).toHaveBeenCalledTimes(2)
-    expect(store.getState().scanState).toBe('idle')
-    expect(store.getState().universe.length).toBeGreaterThan(0)
+  it('ignores a saved timeframe that no longer exists', () => {
+    localStorage.setItem('rsi-ha:timeframe', JSON.stringify({ version: 1, data: '60minute' }))
+    expect(started().feed.intervals).toEqual(['5minute'])
+  })
+
+  it('start() twice opens one stream, and stop() closes it', () => {
+    const { feed, store: s } = started()
+    s.getState().start()
+    expect(feed.intervals).toHaveLength(1)
+    s.getState().stop()
+    expect(feed.listener).toBeNull()
   })
 })

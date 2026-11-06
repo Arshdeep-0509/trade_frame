@@ -1,16 +1,6 @@
 import { authFetch } from '../features/auth/authFetch'
 import { createScannerFeed } from '../features/rsi-ha/scannerFeed'
 import { createScreenerStore } from '../store/screenerStore'
-import { dataSource } from './dataSource'
 
-/**
- * The single screener store instance, wired to the same `dataSource` the
- * rest of the app uses (see dataSource.ts) and to its clock — scan
- * scheduling reads `now()` through here. Nothing else should call
- * createScreenerStore() directly outside of tests.
- */
-export const useScreenerStore = createScreenerStore({
-  dataSource,
-  now: () => dataSource.getNow(),
-  liveFeed: createScannerFeed({ baseUrl: import.meta.env.VITE_INTRADAY_API_BASE ?? '', fetchImpl: authFetch }),
-})
+/** The single store behind /rsi-ha. */
+export const useScreenerStore = createScreenerStore(createScannerFeed({ baseUrl: import.meta.env.VITE_INTRADAY_API_BASE ?? '', fetchImpl: authFetch }))

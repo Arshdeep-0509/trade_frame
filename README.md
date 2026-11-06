@@ -30,7 +30,7 @@ npm run lint    # run oxlint
 
 `/rsi-ha` signals come from the backend's live scanner, pushed at each candle
 close on 3 min, 5 min, 15 min and 1 day (`src/features/rsi-ha/scannerFeed.ts`).
-Custom parameters and watchlists scan in the browser instead.
+The strategy itself lives in the backend.
 
 Start the backend first (see the backend repo's README):
 

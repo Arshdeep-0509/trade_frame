@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PARAMS } from '../../../strategy/constants'
 import type { SignalKind } from '../../../types/domain'
 import { LtpCell, RsiCell, SignalBadge } from '../cells'
-import { SIGNAL_KINDS, signalLabel } from '../rowHelpers'
+import { signalLabel } from '../rowHelpers'
+
+const SIGNAL_KINDS: readonly SignalKind[] = ['BUY', 'SELL', 'BREAKOUT-UP', 'BREAKOUT-DOWN', 'CE Buy', 'PE Buy']
 
 // Spec name mapping: bits.tsx -> cells.tsx; RsiMeter -> RsiCell's inline bar.
-// "LtpCell never changes its own width" is a LAYOUT property (jsdom has no
-// layout) and is checked in the browser suite instead — see e2e/.
 
 const FLASH_MS = 400
 

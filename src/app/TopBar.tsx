@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
-import { Keyboard, LogOut, Moon, Radio, Settings, Sun, TrendingUp } from 'lucide-react'
+import { Keyboard, LogOut, Moon, Radio, Sun, TrendingUp } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { formatISTTime } from '../lib/formatters'
 import { getMarketSession, type MarketSession } from '../lib/marketSession'
@@ -25,8 +25,8 @@ export function TopBar() {
   const theme = useUiStore((s) => s.theme)
   const user = useAuthStore((s) => s.session?.user ?? null)
   const pageLinks = usePageLinks()
-  // /intraday shows its own Master Trust connection badge, so the screener's connection dot is hidden there.
-  const onIntradayPage = useLocation().pathname.startsWith('/intraday')
+  // The dot is /rsi-ha's connection to the server's scanner, which only exists on that page.
+  const onScreenerPage = useLocation().pathname.startsWith('/rsi-ha')
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000)
@@ -87,8 +87,7 @@ export function TopBar() {
         <Badge variant={sessionVariant[session]} className="hidden shrink-0 lg:inline-flex">
           {session}
         </Badge>
-        {/* The screener's Master Trust connection; /intraday shows its own connection badge instead. */}
-        {!onIntradayPage && (
+        {onScreenerPage && (
           <span className="hidden shrink-0 sm:inline-flex">
             <StatusDot status={connectionState} />
           </span>
@@ -105,9 +104,6 @@ export function TopBar() {
           onClick={() => useUiStore.getState().toggleTheme()}
         >
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </IconButton>
-        <IconButton aria-label="Settings" onClick={() => useUiStore.getState().togglePanel('settings')}>
-          <Settings className="h-4 w-4" />
         </IconButton>
         {user && (
           <span className="hidden max-w-[12rem] shrink-0 truncate text-xs text-text-secondary xl:inline" title={ROLE_LABEL[user.role]}>

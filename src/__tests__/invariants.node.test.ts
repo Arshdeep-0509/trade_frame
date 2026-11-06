@@ -130,10 +130,8 @@ describe('9. ARCHITECTURE BOUNDARIES', () => {
       'data/mock/clock.ts': 'the injectable clock itself — anchors simulated time to real time',
       'data/http/HttpMarketDataSource.ts': "/intraday's real market clock — it reads real Master Trust data, so market time IS wall time",
       'data/mock/MockDevtoolsPanel.tsx': 'dev overlay: real elapsed seconds for the render-rate readout',
-      'store/alertStore.ts': 'unique id generation, not market time',
-      'store/watchlistStore.ts': 'unique id generation, not market time',
       'store/intradayStore.ts': 'UI repaint throttle (createThrottle) — paces renders, not the market',
-      'store/screenerStore.ts': 'lastScanDurationMs — measures how long a scan really took',
+      'app/StatusBar.tsx': "the countdown to the server's next scan — real time, as the scanner runs on it",
       'features/auth/authStore.ts': 'login session expiry — a real token lifetime, not market time',
     }
     const offenders = FILES.filter((f) => /\bDate\.now\s*\(/.test(codeOf(f))).map(rel)

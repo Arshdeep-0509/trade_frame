@@ -69,7 +69,3 @@ export const CANDLE_INTERVAL_OPTIONS: readonly { value: string; label: string }[
   { value: '1day', label: '1 day' },
 ]
 
-/** Which params.StrategyParams keys differ from DEFAULT_PARAMS — for the "N modified parameters" UI. */
-export function overriddenParamKeys(params: StrategyParams): (keyof StrategyParams)[] {
-  return (Object.keys(DEFAULT_PARAMS) as (keyof StrategyParams)[]).filter((key) => params[key] !== DEFAULT_PARAMS[key])
-}

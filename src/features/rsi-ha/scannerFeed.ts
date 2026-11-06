@@ -1,30 +1,40 @@
 import type { ConnectionState } from '../../data/MarketDataSource'
-import type { ScanError, ScannedRow } from './scanner'
 
-/** Everything GET /api/scanner/stream sends (see live_scanner.py). */
+/** One signal from the server's live scanner (live_scanner.py). */
+export interface SignalRow {
+  id: string
+  symbol: string
+  exchange: 'NSE' | 'NFO'
+  signal: 'BUY' | 'SELL' | 'CE Buy' | 'PE Buy'
+  price: number
+  rsi: number
+  /** Epoch seconds the candle opened. */
+  time: number
+  /** Epoch seconds the candle closed: when the signal happened. */
+  barCloseAt: number
+  /** Epoch seconds the scanner found it. Absent for a signal found by a startup scan. */
+  detectedAt?: number
+  token: string
+  /** For a CE/PE row, the stock it was derived from. */
+  derivedFrom?: string
+}
+
+export interface ScanError {
+  symbol: string
+  message: string
+}
+
+/** Everything GET /api/scanner/stream sends. */
 export type ScannerFeedEvent =
   | { type: 'status'; state: string; message: string | null; nextScanAt: number | null; progress: { done: number; total: number } }
-  | {
-      type: 'scan'
-      /** True for the state sent on connecting: it replaces the table instead of counting as a new scan. */
-      snapshot?: boolean
-      rows: ScannedRow[]
-      errors: ScanError[]
-      barCloseAt: number | null
-      scannedAt: number
-      durationMs: number
-      universeSize: number
-      nextScanAt: number | null
-    }
-  | { type: 'signal'; rows: ScannedRow[] }
+  | { type: 'scan'; rows: SignalRow[]; errors: ScanError[]; scannedAt: number; durationMs: number; universeSize: number; nextScanAt: number | null }
+  | { type: 'signal'; rows: SignalRow[] }
   | { type: 'progress'; done: number; total: number }
   | { type: 'prices'; prices: Record<string, number> }
 
 export interface ScannerFeedListener {
   onEvent: (event: ScannerFeedEvent) => void
   onConnection: (state: ConnectionState) => void
-  /** This backend has no live scanner, so the browser has to scan for itself. */
-  onUnavailable: () => void
 }
 
 export interface ScannerFeed {
@@ -47,7 +57,7 @@ const MAX_RETRY_MS = 15_000
 const SILENCE_LIMIT_MS = 40_000
 
 /** RSI is NaN in the app but null on the wire: JSON has no NaN. */
-function normaliseRows(rows: ScannedRow[]): ScannedRow[] {
+function normaliseRows(rows: SignalRow[]): SignalRow[] {
   return rows.map((row) => (row.rsi === null ? { ...row, rsi: Number.NaN } : row))
 }
 
@@ -56,7 +66,7 @@ function toEvent(name: string, data: string): ScannerFeedEvent | null {
   switch (name) {
     case 'scan':
     case 'signal':
-      return { ...body, type: name, rows: normaliseRows(body.rows as ScannedRow[]) } as ScannerFeedEvent
+      return { ...body, type: name, rows: normaliseRows(body.rows as SignalRow[]) } as ScannerFeedEvent
     case 'status':
     case 'progress':
     case 'prices':
@@ -66,7 +76,7 @@ function toEvent(name: string, data: string): ScannerFeedEvent | null {
   }
 }
 
-/** Splits a server-sent-events byte stream into events; `push` takes whatever text has arrived so far. */
+/** Splits a server-sent-events byte stream into events; the returned function takes whatever text has arrived so far. */
 export function createSseParser(onMessage: (event: string, data: string) => void): (text: string) => void {
   let buffer = ''
   return (text) => {
@@ -128,22 +138,17 @@ export function createScannerFeed(options: ScannerFeedOptions): ScannerFeed {
         }
       }
 
-      /** True when this connection can't ever work, so retrying is pointless. */
+      /** False once retrying is pointless: a 401 means authFetch has logged the user out. */
       async function connectOnce(onConnected: () => void): Promise<boolean> {
         const connection = new AbortController()
         controller = connection
         const response = await options.fetchImpl(url, { signal: connection.signal, headers: { Accept: 'text/event-stream' } })
-        if (response.status === 401) return true // authFetch has logged them out
-        const switchedOff = response.status === 503 && (await response.text().catch(() => '')).includes('SCANNER_ENABLED')
-        if (response.status === 404 || switchedOff) {
-          listener.onUnavailable()
-          return true
-        }
+        if (response.status === 401) return false
         if (!response.ok || !response.body) throw new Error(`Scanner stream failed (HTTP ${response.status})`)
         listener.onConnection('connected')
         onConnected()
         await readStream(response, connection)
-        return false
+        return true
       }
 
       async function run(): Promise<void> {
@@ -151,7 +156,7 @@ export function createScannerFeed(options: ScannerFeedOptions): ScannerFeed {
         while (!stopped) {
           listener.onConnection('connecting')
           try {
-            if (await connectOnce(() => (retryMs = minRetryMs))) return
+            if (!(await connectOnce(() => (retryMs = minRetryMs)))) return
           } catch {
             // Lost or refused: handled by the retry below.
           }

@@ -4,7 +4,6 @@ import { ExternalLink, RefreshCw } from 'lucide-react'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
-import { useScreenerStore } from '../app/screenerStore'
 import { DEVELOPER_ROLE } from '../features/auth/authApi'
 import { useAuthStore } from '../features/auth/authStore'
 import {
@@ -69,14 +68,6 @@ export function MasterTrustPage() {
       setStatus(await connectMasterTrust(pasted.trim()))
       setPasted('')
       setJustConnected(true)
-      // The screener doesn't retry a failed universe load on its own (Intraday reloads whenever it's opened).
-      const screener = useScreenerStore.getState()
-      if (screener.universe.length === 0 && screener.scanState !== 'loading-universe') {
-        useScreenerStore.setState({ errors: [] })
-        void screener.loadUniverse().then(() => {
-          if (useScreenerStore.getState().scanState !== 'error') return useScreenerStore.getState().runScanNow()
-        })
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect Master Trust.')
     } finally {
