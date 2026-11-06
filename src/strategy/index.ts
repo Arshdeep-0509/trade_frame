@@ -6,7 +6,6 @@ export { DEFAULT_PARAMS, type StrategyParams } from './constants'
 export {
   checkSignal,
   checkBreakout,
-  selectVisibleRows,
   evaluateSignalPredicates,
   evaluateBreakoutPredicates,
   type SignalDecision,
@@ -14,14 +13,8 @@ export {
   type SignalPredicates,
   type BreakoutPredicates,
 } from './signals'
-export { explainSignal, explainBreakout, type SignalExplanation, type BreakoutExplanation, type PredicateCheck } from './explainSignal'
 export {
   loadNseEquityUniverse,
   loadFnoFuturesUniverse,
-  loadFnoAtmOptions,
   type UniverseEntry,
-  type AtmLeg,
-  type AtmContracts,
-  type AtmMap,
 } from './universe'
-export { addOptionRecommendations } from './optionLegs'

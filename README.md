@@ -28,6 +28,10 @@ npm run lint    # run oxlint
 
 ### Real data for `/intraday`
 
+`/rsi-ha` signals come from the backend's live scanner, pushed at each candle
+close on 3 min, 5 min, 15 min and 1 day (`src/features/rsi-ha/scannerFeed.ts`).
+The strategy itself lives in the backend.
+
 Start the backend first (see the backend repo's README):
 
 ```bash

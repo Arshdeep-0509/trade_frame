@@ -1,4 +1,4 @@
-import type { AnalyzedCandle, Candle, SignalRow } from '../types/domain'
+import type { AnalyzedCandle, Candle } from '../types/domain'
 import type { StrategyParams } from './constants'
 import { haStreakLength } from './indicators'
 
@@ -45,8 +45,10 @@ export function evaluateSignalPredicates(candles: AnalyzedCandle[], params: Stra
 }
 
 /**
- * Transliteration of check_signal() (mastertrust_rsi_ha_screener.py lines
- * 279–303). Guard order matches exactly. Both RSI bands are INCLUSIVE —
+ * NOT the live strategy: that is check_signal() in the backend. This older rule
+ * only tunes the test-only mock market (data/mock/generateUniverse.ts).
+ *
+ * Transliteration of an earlier check_signal(). Guard order matches exactly. Both RSI bands are INCLUSIVE —
  * this is the band the code actually implements, not the threshold the
  * module docstring describes. See STRATEGY-CONTRACT.md §2 (KNOWN
  * DISCREPANCIES — DO NOT RESOLVE): the code wins, not the docstring.
@@ -121,15 +123,3 @@ export function checkBreakout(candles: Candle[], params: StrategyParams): Breako
   return { signal: null, level: null }
 }
 
-/**
- * Pure view filter mirroring the visibility rule in __main__ (lines
- * 514–518): NSE equity signals are computed every scan (the option-leg
- * recommendations depend on them) but never displayed themselves — only
- * non-NSE rows (futures/options/breakouts) plus the derived CE/PE Buy rows
- * are shown. A future "show NSE equity rows" UI toggle must be built as a
- * filter over the engine's full output, exactly like this — it must never
- * change what the engine computes.
- */
-export function selectVisibleRows(allRows: SignalRow[]): SignalRow[] {
-  return allRows.filter((row) => row.exchange !== 'NSE')
-}

@@ -18,15 +18,6 @@ export interface UniverseEntry {
   exchange: Exchange
 }
 
-export type AtmLeg = readonly [symbol: string, token: string]
-
-export interface AtmContracts {
-  CE: AtmLeg
-  PE: AtmLeg
-}
-
-export type AtmMap = Record<string, AtmContracts>
-
 const MONTH_ABBREVIATIONS: Record<string, number> = {
   jan: 0,
   feb: 1,
@@ -126,74 +117,3 @@ export function loadFnoFuturesUniverse(
     }))
 }
 
-/**
- * Transliteration of load_fno_atm_options() (lines 378–414). "Spot" is
- * looked up by treating an option's `company_name` as if it were the
- * underlying equity's base symbol (trading_symbol with "-EQ" stripped) —
- * that assumption is baked into the original code, not something to
- * reconcile here.
- */
-export function loadFnoAtmOptions(rows: ScripRow[], params: StrategyParams, todayEpochSeconds: number): AtmMap {
-  const spotByBaseSymbol = new Map<string, number>()
-  for (const row of rows) {
-    if (row.exchange !== 'NSE' || row.instrument_name !== 'EQ') continue
-    const baseSymbol = row.trading_symbol.replace('-EQ', '')
-    const closePrice = toNumericOrNaN(row.close_price)
-    if (Number.isNaN(closePrice)) continue
-    spotByBaseSymbol.set(baseSymbol, closePrice)
-  }
-
-  const optionRows = rows
-    .filter((row) => row.exchange === 'NFO' && row.instrument_name === 'OPTSTK')
-    .map((row) => ({
-      row,
-      expiryEpoch: parseExpiry(row.expiry),
-      strike: toNumericOrNaN(row.strike),
-    }))
-    .filter((entry) => entry.expiryEpoch !== null && !Number.isNaN(entry.strike))
-    .filter((entry) => (entry.expiryEpoch as number) >= todayEpochSeconds)
-
-  const nearestExpiryByCompany = new Map<string, number>()
-  for (const entry of optionRows) {
-    const company = entry.row.company_name
-    const expiry = entry.expiryEpoch as number
-    const current = nearestExpiryByCompany.get(company)
-    if (current === undefined || expiry < current) {
-      nearestExpiryByCompany.set(company, expiry)
-    }
-  }
-
-  const atmMap: AtmMap = {}
-
-  for (const [company, expiry] of nearestExpiryByCompany) {
-    const spot = spotByBaseSymbol.get(company)
-    if (spot === undefined || spot < params.minPrice) continue
-
-    const chain = optionRows.filter((entry) => entry.row.company_name === company && entry.expiryEpoch === expiry)
-    if (chain.length === 0) continue
-
-    let atmStrike = chain[0].strike
-    let minDiff = Math.abs(chain[0].strike - spot)
-    for (const entry of chain) {
-      const diff = Math.abs(entry.strike - spot)
-      if (diff < minDiff) {
-        minDiff = diff
-        atmStrike = entry.strike
-      }
-    }
-
-    const leg = chain.filter((entry) => entry.strike === atmStrike)
-    const contracts: Partial<AtmContracts> = {}
-    for (const entry of leg) {
-      if (entry.row.option_type === 'CE' || entry.row.option_type === 'PE') {
-        contracts[entry.row.option_type] = [entry.row.trading_symbol, String(entry.row.exchange_token)] as const
-      }
-    }
-
-    if (contracts.CE && contracts.PE) {
-      atmMap[company] = { CE: contracts.CE, PE: contracts.PE }
-    }
-  }
-
-  return atmMap
-}

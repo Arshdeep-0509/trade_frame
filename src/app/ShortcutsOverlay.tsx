@@ -11,30 +11,6 @@ interface ShortcutGroup {
 
 const GROUPS: readonly ShortcutGroup[] = [
   {
-    title: 'Table',
-    items: [
-      ['/', 'Focus symbol search'],
-      ['j / k', 'Move selection down / up'],
-      ['Enter', 'Open selected row'],
-      ['Esc', 'Close drawer / overlay'],
-    ],
-  },
-  {
-    title: 'Scanning',
-    items: [
-      ['p', 'Pause / resume scanning'],
-      ['r', 'Rescan now'],
-    ],
-  },
-  {
-    title: 'Navigate',
-    items: [
-      ['g then s', 'Go to Screener'],
-      ['g then w', 'Go to Watchlists'],
-      ['g then h', 'Go to History'],
-    ],
-  },
-  {
     title: 'Intraday',
     items: [
       ['/', 'Focus instrument search'],

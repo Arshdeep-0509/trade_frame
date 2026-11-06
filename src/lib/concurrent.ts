@@ -1,5 +1,5 @@
 /**
- * Shared by src/features/rsi-ha/scanner.ts and src/store/intradayStore.ts —
+ * Used by src/store/intradayStore.ts and src/data/http/HttpMarketDataSource.ts —
  * both pages fetch candles for their own (different) instrument universes
  * against the same bounded-concurrency MarketDataSource, and must do it the
  * same way. Do not fork a second copy of this.

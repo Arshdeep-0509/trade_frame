@@ -1,3 +1,5 @@
+> **Out of date for /rsi-ha.** The live strategy is now `check_signal()` in the backend repo's `mastertrust_rsi_ha_screener.py`, run by `live_scanner.py`. What follows records the earlier frontend port, which only the test-only mock market still uses.
+
 # Strategy Contract
 
 Source of truth: `mastertrust_rsi_ha_screener.py` in the backend repo

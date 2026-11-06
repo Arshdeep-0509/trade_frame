@@ -1,116 +1,108 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ConnectionState, IndexQuote, IndexQuoteKey, MarketDataSource } from '../../../data/MarketDataSource'
-import type { ScripRow, SearchResponse } from '../../../types/api'
-import type { Candle, Instrument, MarketTick } from '../../../types/domain'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createScreenerStore, type ScreenerStore } from '../../../store/screenerStore'
-import type { ScreenerRow } from '../../../store/types'
 import { SignalsTable } from '../SignalsTable'
+import type { ScannerFeedEvent, ScannerFeedListener, SignalRow } from '../scannerFeed'
 
-class NoopDataSource implements MarketDataSource {
-  async searchSymbol(): Promise<SearchResponse> {
-    return { error: null, result: [] }
-  }
-  async fetchHistoricalCandles(): Promise<Candle[]> {
-    return []
-  }
-  async loadScripMaster(): Promise<ScripRow[]> {
-    return []
-  }
-  subscribeTicks(_tokens: string[], _onTick: (tick: MarketTick) => void): () => void {
-    return () => {}
-  }
-  getConnectionState(): ConnectionState {
-    return 'connected'
-  }
-  async fetchIndexQuotes(keys: IndexQuoteKey[]): Promise<IndexQuote[]> {
-    return keys.map((key) => ({ key, label: key, last: 0, prevClose: 0, changePct: 0, time: 0 }))
-  }
-  async fetchDailyBars(_instrument: Pick<Instrument, 'token' | 'exchange'>, _days: number): Promise<Candle[]> {
-    return []
-  }
+const CLOSE_0955 = Date.parse('2026-11-06T09:55:00+05:30') / 1000
+
+function row(overrides: Partial<SignalRow> = {}): SignalRow {
+  return { id: 'a', symbol: 'ACME-EQ', exchange: 'NSE', signal: 'BUY', price: 2500, rsi: 62, time: CLOSE_0955 - 300, barCloseAt: CLOSE_0955, detectedAt: CLOSE_0955 + 3.2, token: 'T1', ...overrides }
 }
 
-function makeRow(i: number): ScreenerRow {
-  const signals = ['BUY', 'SELL', 'BREAKOUT-UP', 'BREAKOUT-DOWN'] as const
-  return {
-    id: `row-${i}`,
-    symbol: `SYM${i}-EQ`,
-    exchange: 'NSE',
-    signal: signals[i % signals.length],
-    price: 2000 + i,
-    rsi: i % 7 === 0 ? NaN : (i * 3) % 100,
-    time: 1767609600 - i * 300,
-    status: 'active',
-    firstSeenAt: 1767609600,
-    lastSeenAt: 1767609600,
-    pinned: false,
-    token: `T${i}`,
-  }
+function scan(rows: SignalRow[], extra: Partial<Extract<ScannerFeedEvent, { type: 'scan' }>> = {}): ScannerFeedEvent {
+  return { type: 'scan', rows, errors: [], scannedAt: CLOSE_0955 + 5, durationMs: 3000, universeSize: 255, nextScanAt: CLOSE_0955 + 302, ...extra }
 }
 
-// jsdom doesn't implement layout, so every element reports 0 clientHeight —
-// @tanstack/react-virtual would then see a zero-height viewport and render
-// nothing at all. Give scrollable containers a realistic viewport size so
-// the virtualizer computes a real (bounded) visible range, same as it would
-// in a real browser.
-function mockViewportDimensions(): () => void {
-  const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
-  const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')
-  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, value: 600 })
-  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 600 })
-  return () => {
-    if (clientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', clientHeight)
-    if (offsetHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', offsetHeight)
-  }
+let listener: ScannerFeedListener | null = null
+let store: ScreenerStore
+
+function setup() {
+  store = createScreenerStore({
+    connect(l) {
+      listener = l
+      return () => {}
+    },
+  })
+  render(<SignalsTable store={store} />)
 }
 
-function renderTableWith500Rows(): { store: ScreenerStore } {
-  const store = createScreenerStore({ dataSource: new NoopDataSource(), now: () => 1767609600 })
-  const rows = Array.from({ length: 500 }, (_, i) => makeRow(i))
-  store.setState({ rows, visibleRows: rows })
-
-  render(
-    <MemoryRouter>
-      <SignalsTable store={store} />
-    </MemoryRouter>,
-  )
-
-  return { store }
+function emit(event: ScannerFeedEvent) {
+  act(() => listener?.onEvent(event))
 }
 
-let restoreViewport: () => void
+afterEach(() => localStorage.clear())
 
-beforeEach(() => {
-  restoreViewport = mockViewportDimensions()
-})
-
-afterEach(() => {
-  restoreViewport()
-  document.body.innerHTML = ''
-})
-
-describe('SignalsTable virtualization', () => {
-  it('renders far fewer DOM rows than the 500 data rows behind it', () => {
-    renderTableWith500Rows()
-
-    const renderedRows = screen.getAllByRole('row')
-    expect(renderedRows.length).toBeGreaterThan(0)
-    expect(renderedRows.length).toBeLessThan(100)
+describe('SignalsTable', () => {
+  it('offers exactly the four timeframes and no other control', () => {
+    setup()
+    const select = screen.getByRole('combobox', { name: 'Timeframe' })
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['3 min', '5 min', '15 min', '1 day'])
+    expect(screen.getAllByRole('combobox')).toHaveLength(1)
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('shows the correct total signal count in the toolbar, with breakout-only rows hidden by default', () => {
-    renderTableWith500Rows()
-    // Every other fixture row is a BREAKOUT-* on its own token, so it has no RSI + HA signal.
-    expect(screen.getByText(/250 of 500 signals/)).toBeInTheDocument()
-    expect(screen.getByText(/250 breakout-only hidden/)).toBeInTheDocument()
+  it('shows a stock with the candle close time, 09:55 not 09:50', () => {
+    setup()
+    emit(scan([row()]))
+    expect(screen.getByText('ACME-EQ')).toBeTruthy()
+    expect(screen.getByText('09:55:00')).toBeTruthy()
+    expect(screen.queryByText('09:50:00')).toBeNull()
   })
 
-  it('the breakout-only toggle brings those rows back', () => {
-    renderTableWith500Rows()
-    fireEvent.click(screen.getAllByRole('switch', { name: /Show breakout-only rows/ })[0])
-    expect(screen.getByText(/500 of 500 signals/)).toBeInTheDocument()
-    expect(screen.queryByText(/breakout-only hidden/)).not.toBeInTheDocument()
+  it('says how long after the close a signal was found', () => {
+    setup()
+    emit(scan([row()]))
+    expect(screen.getByText('09:55:00').getAttribute('title')).toBe('Candle closed 09:55:00 · signal found 3.2s later')
+  })
+
+  it('shows stocks, futures and CE/PE rows together', () => {
+    setup()
+    emit(
+      scan([
+        row(),
+        row({ id: 'b', symbol: 'ACME26NOVFUT', exchange: 'NFO', token: 'T2' }),
+        row({ id: 'c', symbol: 'ACME26NOV2500CE', exchange: 'NFO', signal: 'CE Buy', derivedFrom: 'ACME-EQ', token: 'T3' }),
+      ]),
+    )
+    expect(screen.getAllByRole('row')).toHaveLength(4)
+    expect(screen.getByText('Call Buy')).toBeTruthy()
+  })
+
+  it('shows the date on the 1 day timeframe', () => {
+    setup()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Timeframe' }), { target: { value: '1day' } })
+    emit(scan([row()]))
+    expect(screen.getByText('06 Nov 2026')).toBeTruthy()
+  })
+
+  it('updates the live price and change', () => {
+    setup()
+    emit(scan([row()]))
+    emit({ type: 'prices', prices: { T1: 2525 } })
+    expect(screen.getByText('+1.00%')).toBeTruthy()
+  })
+
+  it('says what is happening before the first scan, and when nothing has matched', () => {
+    setup()
+    expect(screen.getByRole('status').textContent).toContain('Loading')
+    emit(scan([]))
+    expect(screen.getByText(/No stock has met the conditions today/)).toBeTruthy()
+    expect(screen.getByText(/255 instruments checked/)).toBeTruthy()
+  })
+
+  it('shows failed instruments and their reasons', () => {
+    setup()
+    emit(scan([], { errors: [{ symbol: 'BAD-EQ', message: 'Read timed out' }] }))
+    fireEvent.click(screen.getByRole('button', { name: /1 instrument could not be scanned/ }))
+    expect(screen.getByText('BAD-EQ')).toBeTruthy()
+    expect(screen.getByText(/Read timed out/)).toBeTruthy()
+  })
+
+  it('says when Master Trust is not connected', () => {
+    setup()
+    emit({ type: 'status', state: 'waiting-for-token', message: 'Master Trust is not connected.', nextScanAt: null, progress: { done: 0, total: 0 } })
+    expect(screen.getByRole('alert').textContent).toContain('Master Trust is not connected.')
   })
 })

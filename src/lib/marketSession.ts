@@ -48,7 +48,7 @@ const IST_OFFSET_SECONDS = 330 * 60
  * parseExpiry() expresses an expiry date: epoch seconds at UTC midnight of
  * that calendar date.
  *
- * PARITY: pass THIS to loadFnoFuturesUniverse()/loadFnoAtmOptions(), never
+ * PARITY: pass THIS to loadFnoFuturesUniverse(), never
  * the raw clock time. The raw time compares greater than the expiry date's
  * midnight from 05:30 IST on expiry day, which would drop the expiring
  * contract a full day before the Python does.

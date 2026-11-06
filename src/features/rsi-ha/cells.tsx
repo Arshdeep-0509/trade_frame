@@ -83,7 +83,11 @@ export function ExchangeChip({ exchange }: { exchange: 'NSE' | 'NFO' }) {
 /** `daily`: the row is a daily (1-day interval) bar, which has a date but no meaningful time of day. */
 export function TimeCell({ epochSeconds, daily = false }: { epochSeconds: number; daily?: boolean }) {
   const date = new Date(epochSeconds * 1000)
-  return <span className="font-mono tabular-nums text-text-secondary">{daily ? formatISTDate(date) : formatISTTime(date)}</span>
+  return (
+    <span className="font-mono tabular-nums text-text-secondary">
+      {daily ? formatISTDate(date) : formatISTTime(date)}
+    </span>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -137,35 +141,9 @@ export function RsiCell({ rsi, inherited, bands = DEFAULT_PARAMS }: { rsi: numbe
 // HA streak sparkline: last N HA candle colours
 // ---------------------------------------------------------------------------
 
-/**
- * Bars sit on a shared centre baseline and grow UP for green / DOWN for red
- * (mirroring how an actual up/down candle reads), rather than same-height
- * bars distinguished by colour alone — a colourblind viewer can still read
- * the streak shape, not just the aria-label.
- */
-export function HaStreakSparkline({ colors }: { colors?: ('green' | 'red')[] }) {
-  if (!colors || colors.length === 0) {
-    return <span className="text-text-muted">—</span>
-  }
-  return (
-    <span className="inline-flex h-4 items-center gap-px" aria-label={`Heikin-Ashi streak: ${colors.join(', ')}`}>
-      {colors.map((color, i) => (
-        <span key={i} className="flex h-full w-1 flex-col justify-center">
-          <span className={cn('w-full rounded-[1px]', color === 'green' ? 'h-2.5 self-end bg-bullish' : 'h-1.5 self-start bg-bearish')} />
-        </span>
-      ))}
-    </span>
-  )
-}
-
 // ---------------------------------------------------------------------------
 // Level (breakout only)
 // ---------------------------------------------------------------------------
-
-export function LevelCell({ level }: { level?: number }) {
-  if (level === undefined) return <span className="text-text-muted">—</span>
-  return <span className="font-mono tabular-nums text-text-secondary">{formatINR(level)}</span>
-}
 
 // ---------------------------------------------------------------------------
 // Price (static — the price the signal fired at)
