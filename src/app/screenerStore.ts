@@ -1,3 +1,5 @@
+import { authFetch } from '../features/auth/authFetch'
+import { createScannerFeed } from '../features/rsi-ha/scannerFeed'
 import { createScreenerStore } from '../store/screenerStore'
 import { dataSource } from './dataSource'
 
@@ -10,4 +12,5 @@ import { dataSource } from './dataSource'
 export const useScreenerStore = createScreenerStore({
   dataSource,
   now: () => dataSource.getNow(),
+  liveFeed: createScannerFeed({ baseUrl: import.meta.env.VITE_INTRADAY_API_BASE ?? '', fetchImpl: authFetch }),
 })

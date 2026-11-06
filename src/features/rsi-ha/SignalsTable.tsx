@@ -21,7 +21,7 @@ import { RowContextMenu, type ContextMenuState } from './RowContextMenu'
 import { applyFilters, useTableFilters } from './useTableFilters'
 import { compareRows, useSort, type SortableColumn } from './useSort'
 import { UniverseSelector } from './UniverseSelector'
-import { getInstrumentType, isDerivedRow, signalLabel } from './rowHelpers'
+import { getInstrumentType, isDerivedRow, signalCloseTime, signalLabel } from './rowHelpers'
 import { containsRowId, groupKindOf, mergeSignalRows, pinToggleIds, type DisplayItem, type MergedSignalRow } from './mergeSignalRows'
 
 export interface SignalsTableProps {
@@ -570,7 +570,7 @@ function SignalTableRowView({ merged, store, virtualRow, isSelected, isFresh, is
       style={{ gridTemplateColumns: GRID_TEMPLATE, transform: `translateY(${virtualRow.start}px)`, height: virtualRow.size }}
     >
       <span role="gridcell">
-        <TimeCell epochSeconds={row.time} daily={isDailyInterval(params.candleInterval)} />
+        <TimeCell epochSeconds={signalCloseTime(row, params.candleInterval)} daily={isDailyInterval(params.candleInterval)} detectedAt={row.detectedAt} />
       </span>
       <span role="gridcell" className="flex items-center gap-1.5 truncate">
         <span className="truncate font-medium text-text-primary">{row.symbol}</span>

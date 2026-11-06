@@ -9,7 +9,7 @@ import type { SignalKind } from '../../types/domain'
 import { SIGNAL_DETAIL_ENABLED } from './featureFlags'
 import { RowContextMenu, type ContextMenuState } from './RowContextMenu'
 import { ChangePercentCell, ExchangeChip, HaStreakSparkline, InstrumentTypeChip, LevelCell, LtpCell, PriceCell, RsiCell, SignalBadge } from './cells'
-import { getInstrumentType, isDerivedRow, signalLabel } from './rowHelpers'
+import { getInstrumentType, isDerivedRow, signalCloseTime, signalLabel } from './rowHelpers'
 import { containsRowId, pinToggleIds, type DisplayItem, type MergedSignalRow } from './mergeSignalRows'
 
 export interface SignalCardListProps {
@@ -238,7 +238,7 @@ function SignalCard({ merged, store, isSelected, isFresh, style, onOpen, onLongP
         {/* Line 3: time, exchange chip, instrument chip, RSI, HA sparkline, breakout level. */}
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <span className="shrink-0 font-mono tabular-nums text-text-muted">{isDailyInterval(params.candleInterval) ? formatISTDate(new Date(row.time * 1000)) : formatISTTime(new Date(row.time * 1000))}</span>
+            <span className="shrink-0 font-mono tabular-nums text-text-muted">{isDailyInterval(params.candleInterval) ? formatISTDate(new Date(signalCloseTime(row, params.candleInterval) * 1000)) : formatISTTime(new Date(signalCloseTime(row, params.candleInterval) * 1000))}</span>
             <ExchangeChip exchange={row.exchange} />
             <InstrumentTypeChip type={instrumentType} />
             {pinned && <Pin className="h-3 w-3 shrink-0 text-warning" aria-label="Pinned" />}

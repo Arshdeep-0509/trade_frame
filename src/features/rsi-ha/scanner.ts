@@ -32,6 +32,10 @@ export interface ScannedRow extends SignalRow {
    * runFullScan(), not the underlying's.
    */
   token?: string
+  /** Epoch seconds the signal's candle closed. Only the server scanner sets it; see signalCloseTime() otherwise. */
+  barCloseAt?: number
+  /** Epoch seconds the server scanner found this signal — how late it was is detectedAt - barCloseAt. */
+  detectedAt?: number
 }
 
 export interface ScanWatchlistResult {

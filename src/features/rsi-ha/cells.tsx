@@ -81,9 +81,14 @@ export function ExchangeChip({ exchange }: { exchange: 'NSE' | 'NFO' }) {
 // ---------------------------------------------------------------------------
 
 /** `daily`: the row is a daily (1-day interval) bar, which has a date but no meaningful time of day. */
-export function TimeCell({ epochSeconds, daily = false }: { epochSeconds: number; daily?: boolean }) {
+export function TimeCell({ epochSeconds, daily = false, detectedAt }: { epochSeconds: number; daily?: boolean; detectedAt?: number }) {
   const date = new Date(epochSeconds * 1000)
-  return <span className="font-mono tabular-nums text-text-secondary">{daily ? formatISTDate(date) : formatISTTime(date)}</span>
+  const title = detectedAt === undefined ? undefined : `Candle closed ${formatISTTime(date)} · signal found ${Math.max(0, detectedAt - epochSeconds).toFixed(1)}s later`
+  return (
+    <span title={title} className="font-mono tabular-nums text-text-secondary">
+      {daily ? formatISTDate(date) : formatISTTime(date)}
+    </span>
+  )
 }
 
 // ---------------------------------------------------------------------------

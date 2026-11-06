@@ -1,5 +1,6 @@
 import type { Exchange, SignalKind } from '../../types/domain'
 import type { ScreenerRow } from '../../store/types'
+import { isDailyInterval, parseIntervalMinutes } from '../../strategy/constants'
 
 export type InstrumentType = 'EQ' | 'FUT' | 'CE' | 'PE'
 
@@ -17,6 +18,16 @@ export function getInstrumentType(row: Pick<ScreenerRow, 'exchange' | 'signal'>)
 
 export function isDerivedRow(row: Pick<ScreenerRow, 'signal'>): boolean {
   return row.signal === 'CE Buy' || row.signal === 'PE Buy'
+}
+
+/**
+ * When a signal happened: the moment its candle CLOSED, which is when the
+ * strategy can first know. `row.time` is the candle's start (what Master Trust
+ * labels it with), so the 09:50–09:55 candle is a 09:55 signal, not a 09:50 one.
+ */
+export function signalCloseTime(row: Pick<ScreenerRow, 'time' | 'barCloseAt'>, candleInterval: string): number {
+  if (row.barCloseAt !== undefined) return row.barCloseAt
+  return isDailyInterval(candleInterval) ? row.time : row.time + parseIntervalMinutes(candleInterval) * 60
 }
 
 /** Percent change of the live LTP vs. the price the signal fired at. Null when no live tick has arrived yet. */

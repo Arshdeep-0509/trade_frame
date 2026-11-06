@@ -6,7 +6,8 @@ import type { ScannedRow } from '../features/rsi-ha/scanner'
 import { scanWatchlist } from '../features/rsi-ha/scanner'
 import { fetchIntervalCandles } from '../features/rsi-ha/intervalCandles'
 import { runScanInWorker } from '../features/rsi-ha/scannerClient'
-import { DEFAULT_PARAMS, parseIntervalMinutes, type StrategyParams } from '../strategy/constants'
+import type { ScannerFeed, ScannerFeedEvent } from '../features/rsi-ha/scannerFeed'
+import { DEFAULT_PARAMS, overriddenParamKeys, parseIntervalMinutes, type StrategyParams } from '../strategy/constants'
 import { selectVisibleRows } from '../strategy/signals'
 import { loadFnoAtmOptions, loadFnoFuturesUniverse, loadNseEquityUniverse, type AtmMap, type UniverseEntry } from '../strategy/universe'
 import { computeUniverseStats, type UniverseStats } from '../strategy/universeStats'
@@ -22,6 +23,8 @@ import type { ScanError, ScanProgress, ScanState, ScreenerRow, UniverseMode } fr
 enableMapSet()
 
 const DEFAULT_POLL_INTERVAL_MS = 250
+/** How long a rescan waits for the live feed's first answer before moving on. */
+const FEED_SNAPSHOT_TIMEOUT_MS = 5_000
 
 const PARAMS_STORAGE_KEY = 'rsi-ha:params-override'
 const PARAMS_STORAGE_VERSION = 1
@@ -44,6 +47,12 @@ export interface ScreenerStoreDeps {
   runScan?: typeof runScanInWorker
   /** Real-ms poll interval for scan scheduling / connection-state checks. Defaults to 250ms. */
   pollIntervalMs?: number
+  /**
+   * The server's live scanner. While the default strategy is running, signals
+   * and prices come from here and this store neither scans nor polls. Custom
+   * params and watchlists only exist in this browser, so those still scan here.
+   */
+  liveFeed?: ScannerFeed
 }
 
 export interface ScreenerState {
@@ -132,6 +141,13 @@ export interface ScreenerState {
 
 export type ScreenerStore = UseBoundStore<StoreApi<ScreenerState>>
 
+/** The server scans everything; these are the rows a universe mode would have produced on its own. */
+function rowsForMode(rows: ScannedRow[], mode: UniverseMode): ScannedRow[] {
+  if (mode === 'equity') return rows.filter((row) => row.exchange === 'NSE' || row.derivedFrom !== undefined)
+  if (mode === 'futures') return rows.filter((row) => row.exchange === 'NFO' && row.derivedFrom === undefined)
+  return rows
+}
+
 function computeVisibleRows(rows: ScreenerRow[], showNseEquityRows: boolean): ScreenerRow[] {
   return showNseEquityRows ? rows : (selectVisibleRows(rows) as ScreenerRow[])
 }
@@ -185,6 +201,12 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
   let unsubscribeTicks: (() => void) | null = null
   let unsubscribePause: (() => void) | null = null
   const lastBarStartByToken = new Map<string, number>()
+  let disconnectFeed: (() => void) | null = null
+  let feedUnavailable = false
+  let feedConnection: ConnectionState = 'connecting'
+  /** A scan arrived while paused, so the table is behind the server. */
+  let feedMissedWhilePaused = false
+  let resolveFeedSnapshot: (() => void) | null = null
 
   const store = create<ScreenerState>()(
     immer((set, get) => ({
@@ -222,11 +244,14 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
           store.setState((draft) => {
             draft.isPaused = s.isPaused
           })
+          if (!s.isPaused && feedMissedWhilePaused && usesLiveFeed()) void connectFeed()
         })
+        // Signals don't need the scrip master: the feed starts without waiting for it.
+        if (usesLiveFeed()) void connectFeed()
         void get()
           .loadUniverse()
           .then(() => {
-            if (get().scanState !== 'error') return get().runScanNow()
+            if (!usesLiveFeed() && get().scanState !== 'error') return get().runScanNow()
           })
       },
 
@@ -237,6 +262,7 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
         unsubscribeTicks = null
         unsubscribePause?.()
         unsubscribePause = null
+        detachFeed()
       },
 
       async loadUniverse() {
@@ -265,10 +291,18 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
           draft.scanState = 'idle'
         })
 
-        subscribeToUniverseTicks()
+        if (usesLiveFeed()) {
+          unsubscribeTicks?.()
+          unsubscribeTicks = null
+        } else {
+          subscribeToUniverseTicks()
+        }
       },
 
       async runScanNow(options) {
+        if (usesLiveFeed()) return connectFeed()
+        detachFeed()
+
         const state = get()
         if (state.scanState === 'scanning' || state.scanState === 'loading-universe') return
 
@@ -330,7 +364,13 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
         set((draft) => {
           draft.universeMode = mode
         })
-        void get().loadUniverse()
+        const wasOnFeed = disconnectFeed !== null
+        void get()
+          .loadUniverse()
+          .then(() => {
+            // Leaving or joining the feed changes where rows come from, so they're fetched right away.
+            if (usesLiveFeed() || wasOnFeed) return get().runScanNow({ immediateReplace: true })
+          })
       },
 
       async setParams(newParams) {
@@ -483,6 +523,112 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
    * (detected by the bar-start bucket advancing between two ticks), and
    * only for that one symbol.
    */
+  function usesLiveFeed(): boolean {
+    const { universeMode, params } = store.getState()
+    if (!deps.liveFeed || feedUnavailable || universeMode === 'watchlist') return false
+    // The server scans at every candle close, so the scan interval is the one param it doesn't need to match.
+    return overriddenParamKeys(params).every((key) => key === 'scanEverySeconds')
+  }
+
+  function detachFeed(): void {
+    disconnectFeed?.()
+    disconnectFeed = null
+    resolveFeedSnapshot?.()
+    resolveFeedSnapshot = null
+  }
+
+  /** (Re)connects; the server answers with its current state. Resolves once that has been applied. */
+  function connectFeed(): Promise<void> {
+    detachFeed()
+    feedMissedWhilePaused = false
+    return new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => resolveFeedSnapshot?.(), FEED_SNAPSHOT_TIMEOUT_MS)
+      resolveFeedSnapshot = () => {
+        clearTimeout(timeout)
+        resolve()
+      }
+      disconnectFeed = deps.liveFeed?.connect({
+        onEvent: applyFeedEvent,
+        onConnection: (state) => {
+          feedConnection = state
+        },
+        onUnavailable: () => {
+          feedUnavailable = true
+          detachFeed()
+          subscribeToUniverseTicks()
+          void store.getState().runScanNow()
+        },
+      }) ?? null
+    })
+  }
+
+  function applyFeedEvent(event: ScannerFeedEvent): void {
+    const { universeMode, isPaused } = store.getState()
+
+    switch (event.type) {
+      case 'status':
+        store.setState((draft) => {
+          if (event.nextScanAt !== null) draft.nextScanAt = Math.round(event.nextScanAt)
+          const problem = event.state === 'error' || event.state === 'waiting-for-token'
+          draft.errors = [...draft.errors.filter((e) => e.symbol !== '*'), ...(problem ? [{ symbol: '*', message: event.message ?? event.state }] : [])]
+          if (draft.scanState === 'loading-universe') return
+          if (event.state === 'scanning' || event.state === 'loading') {
+            draft.scanState = 'scanning'
+            draft.scanProgress = event.progress
+          } else if (draft.scanState === 'scanning') {
+            draft.scanState = 'done'
+          }
+        })
+        break
+
+      case 'progress':
+        store.setState((draft) => {
+          draft.scanProgress = { done: event.done, total: event.total }
+        })
+        break
+
+      case 'prices':
+        store.setState((draft) => {
+          for (const [token, ltp] of Object.entries(event.prices)) draft.liveLtp.set(token, ltp)
+        })
+        break
+
+      case 'signal':
+        if (isPaused) {
+          feedMissedWhilePaused = true
+          break
+        }
+        // No scanned symbols: these rows only add to the table. The scan event that follows does the fading.
+        applyScanOutcome(rowsForMode(event.rows, universeMode), new Set(), [])
+        break
+
+      case 'scan': {
+        if (isPaused && !event.snapshot) {
+          feedMissedWhilePaused = true
+          break
+        }
+        const rows = rowsForMode(event.rows, universeMode)
+        if (event.snapshot) {
+          applyImmediateScanOutcome(rows, event.errors)
+        } else {
+          const scannedSymbols = new Set([...store.getState().rows.map((r) => r.symbol), ...rows.map((r) => r.symbol)])
+          applyScanOutcome(rows, scannedSymbols, event.errors)
+        }
+        store.setState((draft) => {
+          draft.scanState = 'done'
+          draft.scanProgress = { done: event.universeSize, total: event.universeSize }
+          draft.lastScanAt = Math.floor(event.scannedAt)
+          draft.nextScanAt = event.nextScanAt === null ? null : Math.round(event.nextScanAt)
+          draft.lastScanDurationMs = event.durationMs
+          draft.candleCache.clear()
+        })
+        resolveFeedSnapshot?.()
+        resolveFeedSnapshot = null
+        break
+      }
+    }
+  }
+
   function subscribeToUniverseTicks(): void {
     unsubscribeTicks?.()
     lastBarStartByToken.clear()
@@ -522,7 +668,8 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
   function pollTick(): void {
     const state = store.getState()
 
-    const connectionState = deps.dataSource.getConnectionState()
+    const onFeed = usesLiveFeed()
+    const connectionState = onFeed ? feedConnection : deps.dataSource.getConnectionState()
     if (connectionState !== state.connectionState) {
       store.setState((draft) => {
         draft.connectionState = connectionState
@@ -531,6 +678,7 @@ export function createScreenerStore(deps: ScreenerStoreDeps): ScreenerStore {
 
     const nowSec = deps.now()
     const dueForScan =
+      !onFeed &&
       !state.isPaused &&
       state.nextScanAt !== null &&
       nowSec >= state.nextScanAt &&
