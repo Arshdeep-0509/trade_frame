@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, Link2, TrendingDown, TrendingUp } from 'lucide-react'
 import { Badge } from '../../components/ui/Badge'
-import { Tooltip } from '../../components/ui/Tooltip'
 import { cn } from '../../lib/cn'
 import { formatINR, formatISTDate, formatISTTime, formatNumber } from '../../lib/formatters'
-import { DEFAULT_PARAMS, type StrategyParams } from '../../strategy/constants'
 import type { SignalKind } from '../../types/domain'
 import { signalLabel, type InstrumentType } from './rowHelpers'
 
@@ -89,61 +87,6 @@ export function TimeCell({ epochSeconds, daily = false }: { epochSeconds: number
     </span>
   )
 }
-
-// ---------------------------------------------------------------------------
-// RSI: value + inline 0-100 bar with the BUY/SELL bands shaded
-// ---------------------------------------------------------------------------
-
-export type RsiBands = Pick<StrategyParams, 'rsiBuyLow' | 'rsiBuyHigh' | 'rsiSellLow' | 'rsiSellHigh'>
-
-/**
- * `bands` are the params the scan is actually running with — after a
- * Parameters edit, shading the reference 35–40 / 60–65 would show bands the
- * strategy isn't using. Defaults to the reference strategy.
- */
-export function RsiCell({ rsi, inherited, bands = DEFAULT_PARAMS }: { rsi: number; inherited?: string; bands?: RsiBands }) {
-  if (Number.isNaN(rsi)) {
-    return <span className="font-mono tabular-nums text-text-muted">—</span>
-  }
-
-  const content = (
-    <span className={cn('inline-flex items-center gap-1.5', inherited && 'opacity-50')}>
-      <span className="w-9 font-mono tabular-nums text-text-primary">{formatNumber(rsi, 1)}</span>
-      <span className="relative h-[14px] w-16 overflow-hidden rounded-sm border border-border-hairline bg-surface">
-        <span
-          className="absolute inset-y-0 bg-bearish/25"
-          style={{ left: `${bands.rsiSellLow}%`, width: `${bands.rsiSellHigh - bands.rsiSellLow}%` }}
-          aria-hidden="true"
-        />
-        <span
-          className="absolute inset-y-0 bg-bullish/25"
-          style={{ left: `${bands.rsiBuyLow}%`, width: `${bands.rsiBuyHigh - bands.rsiBuyLow}%` }}
-          aria-hidden="true"
-        />
-        <span
-          className="absolute inset-y-0 w-[2px] bg-text-primary"
-          style={{ left: `${Math.max(0, Math.min(100, rsi))}%` }}
-          aria-hidden="true"
-        />
-      </span>
-    </span>
-  )
-
-  if (!inherited) return content
-  return (
-    <Tooltip label={`inherited from underlying ${inherited}`} side="top">
-      {content}
-    </Tooltip>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// HA streak sparkline: last N HA candle colours
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Level (breakout only)
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Price (static — the price the signal fired at)

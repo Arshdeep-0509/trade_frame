@@ -1,15 +1,21 @@
-import { useEffect, useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
+import { AlertTriangle, Maximize2, Minimize2 } from 'lucide-react'
+import { IconButton } from '../../components/ui/IconButton'
 import { Select } from '../../components/ui/Select'
+import { cn } from '../../lib/cn'
 import { formatISTDate, formatISTTime } from '../../lib/formatters'
 import type { ScreenerStore } from '../../store/screenerStore'
 import { CANDLE_INTERVAL_OPTIONS, isDailyInterval } from '../../strategy/constants'
-import { ChangePercentCell, ExchangeChip, InstrumentTypeChip, LtpCell, PriceCell, RsiCell, SignalBadge } from './cells'
+import { CandleTimer } from './CandleTimer'
+import { ExchangeChip, InstrumentTypeChip, PriceCell, SignalBadge } from './cells'
 import { getInstrumentType, isDerivedRow } from './rowHelpers'
 import type { SignalRow } from './scannerFeed'
 
-const HEADERS = ['Time', 'Symbol', 'Type', 'Signal', 'Price', 'LTP', 'Chg %', 'RSI']
-const NUMERIC_HEADERS = new Set(['Price', 'LTP', 'Chg %'])
+const HEADERS = ['Time', 'Symbol', 'Type', 'Signal', 'Price', 'RSI']
+const NUMERIC_HEADERS = new Set(['Price', 'RSI'])
+/** NSE rows are the stocks themselves; NFO rows are futures and options. */
+const MARKETS = ['NSE', 'NFO'] as const
+type Market = (typeof MARKETS)[number]
 
 function SignalTime({ row, daily }: { row: SignalRow; daily: boolean }) {
   const closed = new Date(row.barCloseAt * 1000)
@@ -22,10 +28,7 @@ function SignalTime({ row, daily }: { row: SignalRow; daily: boolean }) {
   )
 }
 
-function Row({ row, store, daily }: { row: SignalRow; store: ScreenerStore; daily: boolean }) {
-  const ltp = store((s) => s.liveLtp[row.token])
-  const change = ltp === undefined || row.price === 0 ? null : ((ltp - row.price) / row.price) * 100
-
+function Row({ row, daily }: { row: SignalRow; daily: boolean }) {
   return (
     <tr className="border-b border-border-hairline text-sm">
       <td className="px-3 py-2">
@@ -46,14 +49,11 @@ function Row({ row, store, daily }: { row: SignalRow; store: ScreenerStore; dail
       <td className="px-3 py-2 text-right">
         <PriceCell price={row.price} />
       </td>
-      <td className="px-3 py-2 text-right">
-        <LtpCell ltp={ltp} />
-      </td>
-      <td className="px-3 py-2 text-right">
-        <ChangePercentCell value={change} />
-      </td>
-      <td className="px-3 py-2">
-        <RsiCell rsi={row.rsi} inherited={isDerivedRow(row) ? row.derivedFrom : undefined} />
+      <td
+        title={isDerivedRow(row) ? `RSI of ${row.derivedFrom}` : undefined}
+        className={cn('px-3 py-2 text-right font-mono tabular-nums', isDerivedRow(row) ? 'text-text-secondary' : 'text-text-primary')}
+      >
+        {Number.isNaN(row.rsi) ? '—' : row.rsi.toFixed(1)}
       </td>
     </tr>
   )
@@ -93,7 +93,7 @@ function Failures({ store }: { store: ScreenerStore }) {
   )
 }
 
-function EmptyState({ store }: { store: ScreenerStore }) {
+function EmptyState({ store, market }: { store: ScreenerStore; market: Market }) {
   const lastScanAt = store((s) => s.lastScanAt)
   const universeSize = store((s) => s.universeSize)
   const { done, total } = store((s) => s.scanProgress)
@@ -106,17 +106,39 @@ function EmptyState({ store }: { store: ScreenerStore }) {
         </p>
       ) : (
         <p className="text-text-secondary">
-          No stock has met the conditions today. {universeSize} instruments checked at {formatISTTime(new Date(lastScanAt * 1000))}.
+          No {market} signal today. {universeSize} instruments checked at {formatISTTime(new Date(lastScanAt * 1000))}.
         </p>
       )}
     </div>
   )
 }
 
+function useFullScreen(target: RefObject<HTMLElement | null>): { active: boolean; toggle: () => void } {
+  const [active, setActive] = useState(false)
+
+  useEffect(() => {
+    // Also fires when the browser leaves full screen by itself, on Escape.
+    const sync = () => setActive(document.fullscreenElement === target.current)
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [target])
+
+  function toggle(): void {
+    const request = active ? document.exitFullscreen() : target.current?.requestFullscreen()
+    request?.catch(() => {}) // refused by the browser: the page simply stays as it is
+  }
+
+  return { active, toggle }
+}
+
 export function SignalsTable({ store }: { store: ScreenerStore }) {
-  const rows = store((s) => s.rows)
+  const allRows = store((s) => s.rows)
   const candleInterval = store((s) => s.candleInterval)
   const daily = isDailyInterval(candleInterval)
+  const [market, setMarket] = useState<Market>('NFO')
+  const rows = allRows.filter((row) => row.exchange === market)
+  const page = useRef<HTMLDivElement>(null)
+  const fullScreen = useFullScreen(page)
 
   useEffect(() => {
     store.getState().start()
@@ -124,8 +146,8 @@ export function SignalsTable({ store }: { store: ScreenerStore }) {
   }, [store])
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-border bg-panel px-3 py-1.5">
+    <div ref={page} className="flex h-full flex-col bg-surface">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border bg-panel px-3 py-1.5">
         <Select aria-label="Timeframe" value={candleInterval} onChange={(e) => store.getState().setCandleInterval(e.target.value)}>
           {CANDLE_INTERVAL_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -133,15 +155,35 @@ export function SignalsTable({ store }: { store: ScreenerStore }) {
             </option>
           ))}
         </Select>
+        <div role="group" aria-label="Market" className="flex gap-1">
+          {MARKETS.map((name) => (
+            <button
+              key={name}
+              type="button"
+              aria-pressed={market === name}
+              onClick={() => setMarket(name)}
+              className={cn(
+                'rounded border px-3 py-1 text-xs font-medium transition-colors',
+                market === name ? 'border-neutral bg-neutral/15 text-neutral' : 'border-border text-text-secondary hover:text-text-primary',
+              )}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        <CandleTimer candleInterval={candleInterval} />
+        <IconButton aria-label={fullScreen.active ? 'Exit full screen' : 'Full screen'} title={fullScreen.active ? 'Exit full screen' : 'Full screen'} onClick={fullScreen.toggle} className="ml-auto">
+          {fullScreen.active ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </IconButton>
       </div>
 
       <Failures store={store} />
 
       <div className="min-h-0 flex-1 overflow-auto">
         {rows.length === 0 ? (
-          <EmptyState store={store} />
+          <EmptyState store={store} market={market} />
         ) : (
-          <table className="w-full min-w-[720px] border-collapse">
+          <table className="w-full min-w-[560px] border-collapse">
             <thead className="sticky top-0 bg-panel">
               <tr className="border-b border-border text-left text-xs font-medium text-text-secondary">
                 {HEADERS.map((header) => (
@@ -153,7 +195,7 @@ export function SignalsTable({ store }: { store: ScreenerStore }) {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <Row key={row.id} row={row} store={store} daily={daily} />
+                <Row key={row.id} row={row} daily={daily} />
               ))}
             </tbody>
           </table>

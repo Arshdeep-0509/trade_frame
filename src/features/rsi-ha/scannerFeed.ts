@@ -30,7 +30,6 @@ export type ScannerFeedEvent =
   | { type: 'scan'; rows: SignalRow[]; errors: ScanError[]; scannedAt: number; durationMs: number; universeSize: number; nextScanAt: number | null }
   | { type: 'signal'; rows: SignalRow[] }
   | { type: 'progress'; done: number; total: number }
-  | { type: 'prices'; prices: Record<string, number> }
 
 export interface ScannerFeedListener {
   onEvent: (event: ScannerFeedEvent) => void
@@ -69,7 +68,6 @@ function toEvent(name: string, data: string): ScannerFeedEvent | null {
       return { ...body, type: name, rows: normaliseRows(body.rows as SignalRow[]) } as ScannerFeedEvent
     case 'status':
     case 'progress':
-    case 'prices':
       return { ...body, type: name } as ScannerFeedEvent
     default:
       return null

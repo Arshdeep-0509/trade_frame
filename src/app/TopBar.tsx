@@ -44,7 +44,7 @@ export function TopBar() {
         <Link to="/rsi-ha" className="flex shrink-0 items-center gap-2 text-text-primary">
           <TrendingUp className="h-5 w-5 shrink-0 text-neutral" aria-hidden="true" />
           {/* Wordmark drops to just the logo mark below lg. */}
-          <span className="hidden text-sm font-semibold tracking-tight lg:inline">RSI-HA</span>
+          <span className="hidden text-sm font-semibold tracking-tight lg:inline">Trade Frame</span>
         </Link>
         {/* Below md these links move to MobilePageTabs, a full-width row under this bar. */}
         <nav aria-label="Pages" className="hidden shrink-0 items-center gap-1 md:flex">

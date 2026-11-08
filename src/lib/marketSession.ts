@@ -58,6 +58,23 @@ export function expiryFilterToday(nowEpochSeconds: number): number {
   return Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()) / 1000
 }
 
+/**
+ * Seconds until the candle in progress closes, or null when no candle is forming.
+ * Candles start at 09:15 and the day's last one closes at 15:30, as the backend's
+ * next_close() has it; a daily candle (any barMinutes past the session's length)
+ * simply counts down to 15:30.
+ */
+export function secondsToCandleClose(now: Date, barMinutes: number): number | null {
+  if (getMarketSession(now) !== 'OPEN') return null
+  const secondsToday = (Math.floor(now.getTime() / 1000) + IST_OFFSET_SECONDS) % 86_400
+  const toLastClose = MARKET_CLOSE_MINUTES * 60 - secondsToday
+  // getMarketSession() still says OPEN during the 15:30 minute, but no candle is left.
+  if (toLastClose <= 0) return null
+  const barSeconds = barMinutes * 60
+  const intoBar = (secondsToday - MARKET_OPEN_MINUTES * 60) % barSeconds
+  return Math.min(barSeconds - intoBar, toLastClose)
+}
+
 export function getMarketSession(now: Date = new Date()): MarketSession {
   const parts = istPartsFormatter.formatToParts(now)
   const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '0')
