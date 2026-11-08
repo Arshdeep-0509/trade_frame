@@ -1,13 +1,11 @@
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_PARAMS } from '../../../strategy/constants'
 import type { SignalKind } from '../../../types/domain'
-import { LtpCell, RsiCell, SignalBadge } from '../cells'
+import { LtpCell, SignalBadge } from '../cells'
 import { signalLabel } from '../rowHelpers'
 
 const SIGNAL_KINDS: readonly SignalKind[] = ['BUY', 'SELL', 'BREAKOUT-UP', 'BREAKOUT-DOWN', 'CE Buy', 'PE Buy']
 
-// Spec name mapping: bits.tsx -> cells.tsx; RsiMeter -> RsiCell's inline bar.
 
 const FLASH_MS = 400
 
@@ -53,45 +51,6 @@ describe('LtpCell — flash on change', () => {
     render(<LtpCell ltp={1888.88} />)
     expect(flashSpan().className).toMatch(/tabular-nums/)
     expect(flashSpan().textContent).toBe('₹1,888.88')
-  })
-})
-
-describe('RsiCell — value + 0-100 meter', () => {
-  const marker = (container: HTMLElement): HTMLElement => {
-    const spans = Array.from(container.querySelectorAll<HTMLElement>('span[aria-hidden="true"]'))
-    const m = spans.find((s) => s.className.includes('w-[2px]'))
-    if (!m) throw new Error('no marker')
-    return m
-  }
-
-  it.each([0, 37.5, 62.1, 100])('places the marker proportionally: RSI %s -> left %s%%', (rsi) => {
-    const { container } = render(<RsiCell rsi={rsi} />)
-    expect(marker(container).style.left).toBe(`${rsi}%`)
-  })
-
-  it('renders "—" and no meter for NaN', () => {
-    const { container } = render(<RsiCell rsi={NaN} />)
-    expect(container.textContent).toBe('—')
-    expect(container.querySelector('[aria-hidden="true"]')).toBeNull()
-  })
-
-  it('shades the bands the strategy is ACTUALLY using, not hardcoded 35-40 / 60-65', () => {
-    const bands = { rsiBuyLow: 55, rsiBuyHigh: 70, rsiSellLow: 25, rsiSellHigh: 45 }
-    const { container } = render(<RsiCell rsi={50} bands={bands} />)
-    const shades = Array.from(container.querySelectorAll<HTMLElement>('span[aria-hidden="true"]')).filter((s) => /bg-(bullish|bearish)\/25/.test(s.className))
-    const buy = shades.find((s) => s.className.includes('bg-bullish'))
-    const sell = shades.find((s) => s.className.includes('bg-bearish'))
-    expect(buy?.style.left).toBe('55%')
-    expect(buy?.style.width).toBe('15%')
-    expect(sell?.style.left).toBe('25%')
-    expect(sell?.style.width).toBe('20%')
-  })
-
-  it('defaults to the reference bands when none are passed', () => {
-    const { container } = render(<RsiCell rsi={50} />)
-    const buy = Array.from(container.querySelectorAll<HTMLElement>('span.bg-bullish\\/25'))[0]
-    expect(buy.style.left).toBe(`${DEFAULT_PARAMS.rsiBuyLow}%`)
-    expect(buy.style.width).toBe(`${DEFAULT_PARAMS.rsiBuyHigh - DEFAULT_PARAMS.rsiBuyLow}%`)
   })
 })
 

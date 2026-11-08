@@ -21,8 +21,6 @@ export interface ScreenerState {
   candleInterval: string
   /** Today's signals on this timeframe, as the server reports them. */
   rows: SignalRow[]
-  /** Latest price per instrument token. */
-  liveLtp: Record<string, number>
   connectionState: ConnectionState
   scanning: boolean
   scanProgress: { done: number; total: number }
@@ -62,9 +60,6 @@ export function createScreenerStore(feed: ScannerFeed): ScreenerStore {
         case 'progress':
           set({ scanProgress: { done: event.done, total: event.total } })
           break
-        case 'prices':
-          set((s) => ({ liveLtp: { ...s.liveLtp, ...event.prices } }))
-          break
         case 'signal':
           set((s) => {
             const ids = new Set(event.rows.map((row) => row.id))
@@ -93,7 +88,6 @@ export function createScreenerStore(feed: ScannerFeed): ScreenerStore {
     return {
       candleInterval: loadTimeframe(),
       rows: [],
-      liveLtp: {},
       connectionState: 'connecting',
       scanning: false,
       scanProgress: { done: 0, total: 0 },

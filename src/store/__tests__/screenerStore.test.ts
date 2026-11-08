@@ -76,15 +76,13 @@ describe('screenerStore', () => {
     expect(s.getState().rows.map((r) => r.id)).toEqual(['new', 'old'])
   })
 
-  it('records the scan and live prices', () => {
+  it('records the scan', () => {
     const { feed, store: s } = started()
     feed.emit(scan([row()]))
-    feed.emit({ type: 'prices', prices: { T1: 2512.5 } })
     const state = s.getState()
     expect(state.lastScanAt).toBe(410)
     expect(state.nextScanAt).toBe(702)
     expect(state.universeSize).toBe(255)
-    expect(state.liveLtp.T1).toBe(2512.5)
   })
 
   it('shows progress while scanning', () => {
