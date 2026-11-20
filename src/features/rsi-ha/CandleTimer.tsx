@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Clock } from 'lucide-react'
-import { getMarketSession, secondsToCandleClose } from '../../lib/marketSession'
+import { getMarketSession, secondsToCandleClose, type TradingVenue } from '../../lib/marketSession'
 import { CANDLE_INTERVAL_OPTIONS, isDailyInterval, parseIntervalMinutes } from '../../strategy/constants'
 
 function two(value: number): string {
@@ -14,7 +14,7 @@ function countdown(seconds: number): string {
 }
 
 /** Counts down to the selected timeframe's next candle close, while the market is open. */
-export function CandleTimer({ candleInterval }: { candleInterval: string }) {
+export function CandleTimer({ candleInterval, venue = 'NSE' }: { candleInterval: string; venue?: TradingVenue }) {
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
@@ -22,12 +22,16 @@ export function CandleTimer({ candleInterval }: { candleInterval: string }) {
     return () => window.clearInterval(id)
   }, [])
 
-  const seconds = secondsToCandleClose(now, parseIntervalMinutes(candleInterval))
+  const seconds = secondsToCandleClose(now, parseIntervalMinutes(candleInterval), venue)
 
   if (seconds === null) {
+    const mcx = venue === 'MCX'
     return (
-      <span title="The timer runs during market hours, 09:15 to 15:30 IST." className="whitespace-nowrap text-xs text-text-muted">
-        {getMarketSession(now) === 'PRE-OPEN' ? 'Market opens at 09:15' : 'Market closed'}
+      <span
+        title={mcx ? 'The timer runs during MCX hours, 09:00 to 23:30 / 23:55 IST.' : 'The timer runs during market hours, 09:15 to 15:30 IST.'}
+        className="whitespace-nowrap text-xs text-text-muted"
+      >
+        {getMarketSession(now, venue) === 'PRE-OPEN' ? `Market opens at ${mcx ? '09:00' : '09:15'}` : 'Market closed'}
       </span>
     )
   }

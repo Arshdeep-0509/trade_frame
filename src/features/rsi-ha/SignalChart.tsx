@@ -214,7 +214,7 @@ export function SignalChart({ candles, analyzed, params, row, showRawOverlay, vw
       })
     }
 
-    // ---- Lower pane: RSI line, 60-65/35-40 bands shaded, 30/70 reference lines ----
+    // ---- Lower pane: RSI line, buy/sell RSI bands (60-63 / 37-40) shaded, 30/70 reference lines ----
     const rsiPoints = analyzed.filter((c) => !Number.isNaN(c.rsi)).map((c) => ({ time: c.time as UTCTimestamp, value: c.rsi }))
     const rsiSeries = chart.addSeries(LineSeries, { color: theme.colors.neutral, lineWidth: 2 }, 1)
     rsiSeries.setData(rsiPoints)

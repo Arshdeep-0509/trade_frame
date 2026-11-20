@@ -1,4 +1,6 @@
 export type MarketSession = 'PRE-OPEN' | 'OPEN' | 'CLOSED'
+/** NSE covers NSE stocks and NFO derivatives; MCX is commodity futures, on its own hours. */
+export type TradingVenue = 'NSE' | 'MCX'
 
 /**
  * NSE equity/F&O trading holidays that fall on weekdays, as IST 'YYYY-MM-DD'.
@@ -38,6 +40,41 @@ const istPartsFormatter = new Intl.DateTimeFormat('en-US', {
 const MARKET_OPEN_MINUTES = 9 * 60 + 15
 const MARKET_CLOSE_MINUTES = 15 * 60 + 30
 const WEEKEND_DAYS = new Set(['Sat', 'Sun'])
+const MCX_OPEN_MINUTES = 9 * 60
+
+/** Whether US daylight saving is on for a calendar date: second Sunday of March to first Sunday of November. */
+function usDaylightSaving(year: number, month: number, day: number): boolean {
+  const firstSunday = (m: number) => 1 + ((7 - new Date(Date.UTC(year, m - 1, 1)).getUTCDay()) % 7)
+  const key = month * 100 + day
+  return key >= 300 + firstSunday(3) + 7 && key < 1100 + firstSunday(11)
+}
+
+/** MCX follows the US market: 23:30 while US daylight saving is on, 23:55 otherwise (as live_scanner.py's MCX). */
+function mcxCloseMinutes(year: number, month: number, day: number): number {
+  return usDaylightSaving(year, month, day) ? 23 * 60 + 30 : 23 * 60 + 55
+}
+
+function istParts(now: Date): { year: number; month: number; day: number; minutes: number; weekday: string } {
+  const parts = istPartsFormatter.formatToParts(now)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? ''
+  return {
+    year: Number(part('year')),
+    month: Number(part('month')),
+    day: Number(part('day')),
+    minutes: Number(part('hour') || '0') * 60 + Number(part('minute') || '0'),
+    weekday: part('weekday'),
+  }
+}
+
+/** Opening and closing minute of the IST day, or null when the venue is closed all day. */
+export function tradingHours(now: Date, venue: TradingVenue = 'NSE'): { open: number; close: number } | null {
+  const { year, month, day, weekday } = istParts(now)
+  if (WEEKEND_DAYS.has(weekday)) return null
+  // No MCX holiday list, as in the backend: a closed weekday shows as open.
+  if (venue === 'MCX') return { open: MCX_OPEN_MINUTES, close: mcxCloseMinutes(year, month, day) }
+  const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  return NSE_HOLIDAYS.has(date) ? null : { open: MARKET_OPEN_MINUTES, close: MARKET_CLOSE_MINUTES }
+}
 
 const IST_OFFSET_SECONDS = 330 * 60
 
@@ -64,30 +101,25 @@ export function expiryFilterToday(nowEpochSeconds: number): number {
  * next_close() has it; a daily candle (any barMinutes past the session's length)
  * simply counts down to 15:30.
  */
-export function secondsToCandleClose(now: Date, barMinutes: number): number | null {
-  if (getMarketSession(now) !== 'OPEN') return null
+export function secondsToCandleClose(now: Date, barMinutes: number, venue: TradingVenue = 'NSE'): number | null {
+  const hours = tradingHours(now, venue)
+  if (!hours || getMarketSession(now, venue) !== 'OPEN') return null
   const secondsToday = (Math.floor(now.getTime() / 1000) + IST_OFFSET_SECONDS) % 86_400
-  const toLastClose = MARKET_CLOSE_MINUTES * 60 - secondsToday
-  // getMarketSession() still says OPEN during the 15:30 minute, but no candle is left.
+  const toLastClose = hours.close * 60 - secondsToday
+  // getMarketSession() still says OPEN during the closing minute, but no candle is left.
   if (toLastClose <= 0) return null
   const barSeconds = barMinutes * 60
-  const intoBar = (secondsToday - MARKET_OPEN_MINUTES * 60) % barSeconds
+  const intoBar = (secondsToday - hours.open * 60) % barSeconds
   return Math.min(barSeconds - intoBar, toLastClose)
 }
 
-export function getMarketSession(now: Date = new Date()): MarketSession {
-  const parts = istPartsFormatter.formatToParts(now)
-  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '0')
-  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? '0')
-  const weekday = parts.find((p) => p.type === 'weekday')?.value ?? ''
+export function getMarketSession(now: Date = new Date(), venue: TradingVenue = 'NSE'): MarketSession {
+  const hours = tradingHours(now, venue)
+  if (!hours) return 'CLOSED'
 
-  const date = `${parts.find((p) => p.type === 'year')?.value}-${parts.find((p) => p.type === 'month')?.value}-${parts.find((p) => p.type === 'day')?.value}`
+  const minutesSinceMidnight = istParts(now).minutes
 
-  if (WEEKEND_DAYS.has(weekday) || NSE_HOLIDAYS.has(date)) return 'CLOSED'
-
-  const minutesSinceMidnight = hour * 60 + minute
-
-  if (minutesSinceMidnight < MARKET_OPEN_MINUTES) return 'PRE-OPEN'
-  if (minutesSinceMidnight <= MARKET_CLOSE_MINUTES) return 'OPEN'
+  if (minutesSinceMidnight < hours.open) return 'PRE-OPEN'
+  if (minutesSinceMidnight <= hours.close) return 'OPEN'
   return 'CLOSED'
 }

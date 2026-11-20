@@ -13,9 +13,10 @@ import type { SignalRow } from './scannerFeed'
 
 const HEADERS = ['Time', 'Symbol', 'Type', 'Signal', 'Price', 'RSI']
 const NUMERIC_HEADERS = new Set(['Price', 'RSI'])
-/** NSE rows are the stocks themselves; NFO rows are futures and options. */
-const MARKETS = ['NSE', 'NFO'] as const
+/** NSE rows are the stocks themselves; NFO rows are futures and options; MCX rows are commodity futures. */
+const MARKETS = ['NSE', 'NFO', 'MCX'] as const
 type Market = (typeof MARKETS)[number]
+export type SignalsMarket = Market
 
 function SignalTime({ row, daily }: { row: SignalRow; daily: boolean }) {
   const closed = new Date(row.barCloseAt * 1000)
@@ -131,11 +132,31 @@ function useFullScreen(target: RefObject<HTMLElement | null>): { active: boolean
   return { active, toggle }
 }
 
-export function SignalsTable({ store }: { store: ScreenerStore }) {
-  const allRows = store((s) => s.rows)
-  const candleInterval = store((s) => s.candleInterval)
+/**
+ * `store` is the NSE/NFO scanner. `mcxStore`, when given, adds the MCX tab: the server's
+ * separate commodity scanner, which runs on MCX hours and is only connected while its tab is open.
+ */
+export function SignalsTable({
+  store,
+  mcxStore,
+  onMarketChange,
+}: {
+  store: ScreenerStore
+  mcxStore?: ScreenerStore
+  /** Told which tab is on show, e.g. so the status bar can report that tab's scanner. */
+  onMarketChange?: (market: Market) => void
+}) {
+  const [market, setMarketState] = useState<Market>('NFO')
+  function setMarket(next: Market): void {
+    setMarketState(next)
+    onMarketChange?.(next)
+  }
+  const markets = mcxStore ? MARKETS : MARKETS.filter((name) => name !== 'MCX')
+  const mcx = market === 'MCX' && mcxStore !== undefined
+  const active = mcx ? mcxStore : store
+  const allRows = active((s) => s.rows)
+  const candleInterval = active((s) => s.candleInterval)
   const daily = isDailyInterval(candleInterval)
-  const [market, setMarket] = useState<Market>('NFO')
   const rows = allRows.filter((row) => row.exchange === market)
   const page = useRef<HTMLDivElement>(null)
   const fullScreen = useFullScreen(page)
@@ -145,10 +166,24 @@ export function SignalsTable({ store }: { store: ScreenerStore }) {
     return () => store.getState().stop()
   }, [store])
 
+  useEffect(() => {
+    if (!mcx || !mcxStore) return
+    // One timeframe for every tab: the MCX tab opens on the one last chosen.
+    const timeframe = store.getState().candleInterval
+    if (mcxStore.getState().candleInterval !== timeframe) mcxStore.getState().setCandleInterval(timeframe)
+    else mcxStore.getState().start()
+    return () => mcxStore.getState().stop()
+  }, [mcx, mcxStore, store])
+
+  function setCandleInterval(value: string): void {
+    store.getState().setCandleInterval(value)
+    if (mcx && mcxStore) mcxStore.getState().setCandleInterval(value)
+  }
+
   return (
     <div ref={page} className="flex h-full flex-col bg-surface">
       <div className="flex flex-wrap items-center gap-3 border-b border-border bg-panel px-3 py-1.5">
-        <Select aria-label="Timeframe" value={candleInterval} onChange={(e) => store.getState().setCandleInterval(e.target.value)}>
+        <Select aria-label="Timeframe" value={candleInterval} onChange={(e) => setCandleInterval(e.target.value)}>
           {CANDLE_INTERVAL_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
@@ -156,7 +191,7 @@ export function SignalsTable({ store }: { store: ScreenerStore }) {
           ))}
         </Select>
         <div role="group" aria-label="Market" className="flex gap-1">
-          {MARKETS.map((name) => (
+          {markets.map((name) => (
             <button
               key={name}
               type="button"
@@ -171,17 +206,17 @@ export function SignalsTable({ store }: { store: ScreenerStore }) {
             </button>
           ))}
         </div>
-        <CandleTimer candleInterval={candleInterval} />
+        <CandleTimer candleInterval={candleInterval} venue={mcx ? 'MCX' : 'NSE'} />
         <IconButton aria-label={fullScreen.active ? 'Exit full screen' : 'Full screen'} title={fullScreen.active ? 'Exit full screen' : 'Full screen'} onClick={fullScreen.toggle} className="ml-auto">
           {fullScreen.active ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </IconButton>
       </div>
 
-      <Failures store={store} />
+      <Failures store={active} />
 
       <div className="min-h-0 flex-1 overflow-auto">
         {rows.length === 0 ? (
-          <EmptyState store={store} market={market} />
+          <EmptyState store={active} market={market} />
         ) : (
           <table className="w-full min-w-[560px] border-collapse">
             <thead className="sticky top-0 bg-panel">

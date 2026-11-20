@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import { formatISTTime } from '../lib/formatters'
-import { useScreenerStore } from './screenerStore'
+import { useMcxScreenerStore, useRsiHaMarket, useScreenerStore } from './screenerStore'
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -17,13 +17,16 @@ function duration(seconds: number): string {
 }
 
 export function StatusBar() {
-  const universeSize = useScreenerStore((s) => s.universeSize)
-  const scanning = useScreenerStore((s) => s.scanning)
-  const scanProgress = useScreenerStore((s) => s.scanProgress)
-  const signalCount = useScreenerStore((s) => s.rows.length)
-  const lastScanAt = useScreenerStore((s) => s.lastScanAt)
-  const nextScanAt = useScreenerStore((s) => s.nextScanAt)
-  const connectionState = useScreenerStore((s) => s.connectionState)
+  // The MCX tab has a scanner of its own (29 or so commodity futures); NSE and NFO share one.
+  const mcx = useRsiHaMarket((s) => s.market === 'MCX')
+  const scanner = mcx ? useMcxScreenerStore : useScreenerStore
+  const universeSize = scanner((s) => s.universeSize)
+  const scanning = scanner((s) => s.scanning)
+  const scanProgress = scanner((s) => s.scanProgress)
+  const signalCount = scanner((s) => s.rows.length)
+  const lastScanAt = scanner((s) => s.lastScanAt)
+  const nextScanAt = scanner((s) => s.nextScanAt)
+  const connectionState = scanner((s) => s.connectionState)
 
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
   useEffect(() => {
@@ -32,7 +35,7 @@ export function StatusBar() {
   }, [])
 
   const fields = [
-    { label: 'Scanned', value: scanning ? `${scanProgress.done}/${scanProgress.total}` : universeSize > 0 ? `${universeSize}/${universeSize}` : '—' },
+    { label: mcx ? 'MCX scanned' : 'Scanned', value: scanning ? `${scanProgress.done}/${scanProgress.total}` : universeSize > 0 ? `${universeSize}/${universeSize}` : '—' },
     { label: 'Signals', value: String(signalCount) },
     { label: 'Last scan', value: lastScanAt !== null ? formatISTTime(new Date(lastScanAt * 1000)) : '—' },
     { label: 'Next scan', value: nextScanAt !== null ? duration(Math.max(0, nextScanAt - now)) : '—' },

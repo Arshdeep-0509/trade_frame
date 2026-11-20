@@ -4,7 +4,7 @@ import type { ConnectionState } from '../../data/MarketDataSource'
 export interface SignalRow {
   id: string
   symbol: string
-  exchange: 'NSE' | 'NFO'
+  exchange: 'NSE' | 'NFO' | 'MCX'
   signal: 'BUY' | 'SELL' | 'CE Buy' | 'PE Buy'
   price: number
   rsi: number
@@ -43,6 +43,8 @@ export interface ScannerFeed {
 
 export interface ScannerFeedOptions {
   baseUrl?: string
+  /** Which of the server's scanners: NSE (stocks and NFO, the default) or MCX (commodity futures). */
+  market?: 'NSE' | 'MCX'
   /** Must not be marketFetch: this request stays open, and would hold one of its slots for good. */
   fetchImpl: typeof fetch
   minRetryMs?: number
@@ -108,7 +110,8 @@ export function createScannerFeed(options: ScannerFeedOptions): ScannerFeed {
 
   return {
     connect(listener, candleInterval) {
-      const url = `${streamUrl}?interval=${encodeURIComponent(candleInterval)}`
+      const market = options.market && options.market !== 'NSE' ? `&market=${options.market}` : ''
+      const url = `${streamUrl}?interval=${encodeURIComponent(candleInterval)}${market}`
       let stopped = false
       let controller: AbortController | null = null
       let retryTimer: ReturnType<typeof setTimeout> | null = null

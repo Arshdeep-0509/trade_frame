@@ -161,3 +161,65 @@ describe('SignalsTable', () => {
     expect(screen.getByRole('alert').textContent).toContain('Master Trust is not connected.')
   })
 })
+
+describe('SignalsTable MCX tab', () => {
+  function setupWithMcx() {
+    const connected: string[] = []
+    let mcxListener: ScannerFeedListener | null = null
+    store = createScreenerStore({
+      connect(l) {
+        listener = l
+        connected.push('NSE')
+        return () => {}
+      },
+    })
+    const mcxStore = createScreenerStore({
+      connect(l, interval) {
+        mcxListener = l
+        connected.push(`MCX ${interval}`)
+        return () => {}
+      },
+    })
+    render(<SignalsTable store={store} mcxStore={mcxStore} />)
+    return { connected, emitMcx: (event: ScannerFeedEvent) => act(() => mcxListener?.onEvent(event)) }
+  }
+
+  it('adds an MCX tab that connects only when opened and shows commodity futures', () => {
+    const { connected, emitMcx } = setupWithMcx()
+    expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['NSE', 'NFO', 'MCX', 'Full screen'])
+    expect(connected).toEqual(['NSE'])
+
+    emit(scan([row()]))
+    fireEvent.click(screen.getByRole('button', { name: 'MCX' }))
+    expect(connected).toEqual(['NSE', 'MCX 5minute'])
+    expect(screen.queryByText('ACME26NOVFUT')).toBeNull()
+
+    emitMcx(scan([row({ id: 'g', symbol: 'GOLD26DECFUT', exchange: 'MCX', price: 127452 })], { universeSize: 29 }))
+    expect(screen.getByText('GOLD26DECFUT')).toBeTruthy()
+    expect(screen.getByText('FUT')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'NFO' }))
+    expect(screen.getByText('ACME26NOVFUT')).toBeTruthy()
+    expect(screen.queryByText('GOLD26DECFUT')).toBeNull()
+  })
+
+  it('opens the MCX tab on the timeframe chosen for NSE/NFO', () => {
+    const { connected } = setupWithMcx()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Timeframe' }), { target: { value: '15minute' } })
+    fireEvent.click(screen.getByRole('button', { name: 'MCX' }))
+    expect(connected.at(-1)).toBe('MCX 15minute')
+    expect((screen.getByRole('combobox', { name: 'Timeframe' }) as HTMLSelectElement).value).toBe('15minute')
+  })
+})
+
+describe('SignalsTable onMarketChange', () => {
+  it('reports the tab on show, so the status bar can follow it', () => {
+    const seen: string[] = []
+    store = createScreenerStore({ connect: () => () => {} })
+    const mcxStore = createScreenerStore({ connect: () => () => {} })
+    render(<SignalsTable store={store} mcxStore={mcxStore} onMarketChange={(m) => seen.push(m)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'MCX' }))
+    fireEvent.click(screen.getByRole('button', { name: 'NSE' }))
+    expect(seen).toEqual(['MCX', 'NSE'])
+  })
+})

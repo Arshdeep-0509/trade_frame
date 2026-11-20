@@ -17,8 +17,8 @@ rule 1, none of this is to be "fixed" during porting, however odd it looks.
 | `MIN_PRICE` | `2000.0` | line 73 |
 | `RSI_PERIOD` | `14` | line 74 |
 | `RSI_BUY_LOW` | `60` | line 75 |
-| `RSI_BUY_HIGH` | `65` | line 76 |
-| `RSI_SELL_LOW` | `35` | line 77 |
+| `RSI_BUY_HIGH` | `63` | line 76 |
+| `RSI_SELL_LOW` | `37` | line 77 |
 | `RSI_SELL_HIGH` | `40` | line 78 |
 | `BREAKOUT_LOOKBACK` | `20` | line 79 |
 | `SCAN_EVERY_SECONDS` | `300` | line 80 |

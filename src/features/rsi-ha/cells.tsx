@@ -66,7 +66,7 @@ export function InstrumentTypeChip({ type }: { type: InstrumentType }) {
   return <span className={cn('font-mono text-[11px] font-medium', instrumentTypeClasses[type])}>{type}</span>
 }
 
-export function ExchangeChip({ exchange }: { exchange: 'NSE' | 'NFO' }) {
+export function ExchangeChip({ exchange }: { exchange: 'NSE' | 'NFO' | 'MCX' }) {
   return (
     <span className="rounded border border-border-hairline bg-surface px-1 py-px font-mono text-[10px] text-text-muted">
       {exchange}
