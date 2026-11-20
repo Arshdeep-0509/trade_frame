@@ -34,14 +34,14 @@ function makeSeries(colors: Array<'green' | 'red'>, rsi: number, close = 2500): 
 }
 
 describe('checkSignal', () => {
-  it('BUY fires at rsi exactly 60 and exactly 65 (inclusive band)', () => {
+  it('BUY fires at rsi exactly 60 and exactly 63 (inclusive band)', () => {
     expect(checkSignal(makeSeries(['red', 'green', 'green'], 60), DEFAULT_PARAMS)).toBe('BUY')
-    expect(checkSignal(makeSeries(['red', 'green', 'green'], 65), DEFAULT_PARAMS)).toBe('BUY')
+    expect(checkSignal(makeSeries(['red', 'green', 'green'], 63), DEFAULT_PARAMS)).toBe('BUY')
   })
 
   it('BUY does not fire just outside the band', () => {
     expect(checkSignal(makeSeries(['red', 'green', 'green'], 59.99), DEFAULT_PARAMS)).toBeNull()
-    expect(checkSignal(makeSeries(['red', 'green', 'green'], 65.01), DEFAULT_PARAMS)).toBeNull()
+    expect(checkSignal(makeSeries(['red', 'green', 'green'], 63.01), DEFAULT_PARAMS)).toBeNull()
   })
 
   it('BUY does not fire on a streak of 1 or 3 — only exactly 2', () => {
@@ -53,10 +53,10 @@ describe('checkSignal', () => {
     expect(checkSignal(makeSeries(['red', 'green', 'green'], 62), DEFAULT_PARAMS)).toBe('BUY')
   })
 
-  it('SELL mirrors BUY at rsi exactly 35 and exactly 40', () => {
-    expect(checkSignal(makeSeries(['green', 'red', 'red'], 35), DEFAULT_PARAMS)).toBe('SELL')
+  it('SELL mirrors BUY at rsi exactly 37 and exactly 40', () => {
+    expect(checkSignal(makeSeries(['green', 'red', 'red'], 37), DEFAULT_PARAMS)).toBe('SELL')
     expect(checkSignal(makeSeries(['green', 'red', 'red'], 40), DEFAULT_PARAMS)).toBe('SELL')
-    expect(checkSignal(makeSeries(['green', 'red', 'red'], 34.99), DEFAULT_PARAMS)).toBeNull()
+    expect(checkSignal(makeSeries(['green', 'red', 'red'], 36.99), DEFAULT_PARAMS)).toBeNull()
     expect(checkSignal(makeSeries(['green', 'red', 'red'], 40.01), DEFAULT_PARAMS)).toBeNull()
   })
 

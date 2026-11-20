@@ -3,10 +3,11 @@ import type { Exchange, SignalKind } from '../../types/domain'
 export type InstrumentType = 'EQ' | 'FUT' | 'CE' | 'PE'
 
 /** Derived purely from exchange + signal kind: options only arrive as "CE Buy"/"PE Buy". */
-export function getInstrumentType(row: { exchange: Exchange; signal: SignalKind }): InstrumentType {
+export function getInstrumentType(row: { exchange: Exchange | 'MCX'; signal: SignalKind }): InstrumentType {
   if (row.signal === 'CE Buy') return 'CE'
   if (row.signal === 'PE Buy') return 'PE'
-  return row.exchange === 'NFO' ? 'FUT' : 'EQ'
+  // MCX rows are commodity futures.
+  return row.exchange === 'NFO' || row.exchange === 'MCX' ? 'FUT' : 'EQ'
 }
 
 export function isDerivedRow(row: { signal: SignalKind }): boolean {

@@ -86,6 +86,15 @@ describe('createScannerFeed', () => {
     expect(fetchImpl.mock.calls[0]).toEqual(expect.arrayContaining(['/api/scanner/stream?interval=15minute']))
   })
 
+  it('asks the MCX scanner when given market MCX', async () => {
+    const stream = streamResponse()
+    const fetchImpl = vi.fn(async () => stream.response)
+    const { connection, listener } = recorder()
+    disconnects.push(createScannerFeed({ fetchImpl: fetchImpl as unknown as typeof fetch, market: 'MCX' }).connect(listener, '5minute'))
+    await vi.waitFor(() => expect(connection).toContain('connected'))
+    expect(fetchImpl.mock.calls[0]).toEqual(expect.arrayContaining(['/api/scanner/stream?interval=5minute&market=MCX']))
+  })
+
   it('keeps retrying while the server is unreachable', async () => {
     const stream = streamResponse()
     const fetchImpl = vi.fn().mockRejectedValueOnce(new Error('down')).mockResolvedValueOnce(new Response('', { status: 502 })).mockResolvedValueOnce(stream.response)
